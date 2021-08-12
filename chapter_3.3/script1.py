@@ -6,7 +6,7 @@ import datetime
 from osgeo import gdal, gdal_array
 from PIL import Image
 
-#Set directory where the input files.
+#Set the directory where the input files are located.
 directory=r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\GaugeIDW\InputData"
 os.chdir(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\GaugeIDW\InputData")
 
