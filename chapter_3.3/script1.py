@@ -1,3 +1,9 @@
+#################################
+## Created by: C. B. Moroz ######
+#################################
+
+#Description: code to analyze the quality of the rain gauge data through a series of consistency and completeness tests
+
 import os
 import csv
 import numpy as np
