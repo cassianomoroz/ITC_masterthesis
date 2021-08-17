@@ -20,13 +20,13 @@
   Gravel = Gravel_$1.map; # coarse fragments cm3/dm3, 
   bd = BD_$1.map;   # bulk density in 
 
-  cover=vegcover.map; #Divide it by 100 because it is expressed in percentage
-  # optional, can use for bulkdensity, higher cover is more structure, lower density 
+  cover=vegcover.map; #Extracted from MapBiomas.
   
   standardBD = scalar(1470); # standard bulk dens assumed by saxton and rawls. High! 1350 would be better
 
-  fractionmoisture = scalar(0.79);  #inital moisture as fraction between porosity and field capacity 
-                                   # 0 = init moist is at FC, 1.0 = init moist is at porosity
+  fractionmoisture = scalar(0.50);  #Inital moisture as fraction between porosity and field capacity 
+                                    #0 = init moist is at FC, 1.0 = init moist is at porosity
+                                    #Was initially adopted as 0.5, but was increased in a try and error approach to calibrate the OpenLISEM model.
 
   # output maps
   POROSITY = thetas1.0_$1.map;  	#porosity (cm3/cm3)
@@ -44,15 +44,10 @@
   OM = OC*1.73; #/2.0;  #conversion org carbon to org matter factor 2
   
   Densityfactor = (1-0.1*cover);
-  # density factor is 1.0, but could be made lower for organic soils and higher for compacted urban areas.
 
   bdsg=bd*10;           #bulkdensity cg/m3 to kg/m3
   Gravel = Gravel/1000; # from cm3/dm3 (1000 cc in a liter)
   report Densityfactor = bdsg/standardBD*(1-0.1*cover);
-  
-  #scalar(1.0); # range 0.9 to 1.15
-  # calculated as the bulk density from soilgrids divided by some standard bd
-  # multiple regression from excel 
 
 # wilting point stuff
   M1500 =-0.024*S+0.487*C+0.006*OM+0.005*S*OM-0.013*C*OM+0.068*S*C+0.031;
