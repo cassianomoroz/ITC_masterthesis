@@ -1,3 +1,9 @@
+#################################
+## Created by: C. B. Moroz ######
+#################################
+
+#Description: code to merge satellite and gauge rainfall estimates through mean bias correction (MBC) and residual inverse distance weighting (RIDW).
+
 import os
 import csv
 import numpy as np
@@ -6,11 +12,11 @@ import datetime
 from osgeo import gdal, gdal_array
 from PIL import Image
 
-#Set directory where the input files
+#Set directory where the input files are located.
 directory=r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\SatelliteValidation\InputData"
 os.chdir(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\SatelliteValidation\InputData")
 
-#Open the rainfall files for all products (GSMaP, IMERG and gauge)
+#Open the rainfall files for all products (GSMaP, IMERG and gauge) and time scales (daily, 3-daily, monthly).
 GSMaP_monthly=np.load("prec_GSMaP_monthly.npy",allow_pickle=True).item()
 GSMaP_3daily=np.load("prec_GSMaP_3daily.npy",allow_pickle=True).item()
 GSMaP_daily=np.load("prec_GSMaP_daily.npy",allow_pickle=True).item()
@@ -21,181 +27,181 @@ gauge_daily=np.load("prec_gauge_daily_all.npy",allow_pickle=True).item()
 gauge_3daily=np.load("prec_gauge_3daily_all.npy",allow_pickle=True).item()
 gauge_monthly=np.load("prec_gauge_monthly_all.npy",allow_pickle=True).item()
 
-#Import the target locations (pixel centers) for IMERG and GSMaP
-targetloc=[]
-with open(r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\SGMerged\Input\Targetloc.csv', newline='') as f:
+#Import the target locations (pixel centers) for IMERG and GSMaP.
+targetloc=[] #Create a list to store the locations.
+with open(r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\SGMerged\Input\Targetloc.csv', newline='') as f: #Open the file.
     reader = csv.reader(f)
     loc_extend = list(reader)   
     targetloc.extend(loc_extend)
-#Fix the first text
-targetloc[0][0]=targetloc[0][0][3:]
+targetloc[0][0]=targetloc[0][0][3:] #Eliminate the rows and columns that are not relevant.
 
-#Import the coordinates from gauge centers
-gauge_coord=[]
-with open(r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\GaugeIDW\InputData\GaugeCoordinates.csv', newline='') as f:
+#Import the coordinates from the pixels where the rain gauges are located.
+gauge_coord=[] #Create a list to store the locations.
+with open(r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\GaugeIDW\InputData\GaugeCoordinates.csv', newline='') as f: #Open the file.
     reader = csv.reader(f)
     coord_extend = list(reader)   
     gauge_coord.extend(coord_extend)
-#Fix the first text
-gauge_coord[0][0]=gauge_coord[0][0][3:]
+gauge_coord[0][0]=gauge_coord[0][0][3:] #Eliminate the rows and columns that are not relevant.
 
-#Import the adopted codes from Group 1
-codes1=np.load("codes_adp.npy",allow_pickle=True).tolist()
+#Import the adopted codes from the rain gauges from Group 1.
+codes1=np.load("codes_adp.npy",allow_pickle=True).tolist() #Create a list.
 codes1=[row[1] for row in codes1]
-#Import the adopted codes from Group 2
-codes2=np.load(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\GaugeIDW\InputData\codes_group2.npy",allow_pickle=True).tolist()
+#Import the adopted codes from the rain gauges from Group 2.
+codes2=np.load(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\GaugeIDW\InputData\codes_group2.npy",allow_pickle=True).tolist() #Create a list.
 
-#Add X and Y coordinates do the codes_adp list:
-for i in range(len(codes1)):
-    for j in range(len(gauge_coord)):
-        if codes1[i]==gauge_coord[j][0]:
-            codes1[i]=gauge_coord[j]
+#Add the X and Y coordinates of the gauges to the codes list:
+for i in range(len(codes1)): #Iterate over gauges.
+    for j in range(len(gauge_coord)): #Iterave over coordinates.
+        if codes1[i]==gauge_coord[j][0]: #If codes match.
+            codes1[i]=gauge_coord[j] #Add X and Y coordinates.
             
-#Create a function for the mean bias correction merging technique
+#Create a function to perform both MBC and RIDW merging techniques.
 def merge(sat_daily,sat_interval,gauge_daily,gauge_interval,targetloc,codes1,codes2,datelabel,satlabel):
 
-    #Extract the stations from Group 1 to be adopted to calibrate satellite products
+    #Extract the codes of the stations from Group 1 to be adopted to calibrate satellite products.
     codes_adp=[row[0] for row in codes1]
 
     #Calculate the multiplicative and differential correction factors and save the values.
-    cor_factor_MBC=[] #list to store MBC correction factors
-    cor_factor_RIDW=[] #list to store RIDW correction factors
-    sat=sat_interval['Rainfall_02649002'] #for first interaction
-    #The correction factors for both cases
-    for i in range(len(sat)):
-        cor_RIDW_append=[sat[i][0]]
-        mean_sat=0
-        mean_gauge=0
-        for j in sat_interval.keys():
-            if j in codes_adp:
-                sat=sat_interval[j]    
-                gauge=gauge_interval[j]
-                mean_sat=mean_sat+sat[i][1]
-                mean_gauge=mean_gauge+gauge[i][1]
-                dif=gauge[i][1]-sat[i][1]
-                cor_RIDW_append.append(dif)
-        cor_factor_RIDW.append(cor_RIDW_append)
-        if mean_sat<1: ##Adopting a mean satellite estimate equals or higher than 1 to avoid extreme corrections factors (e.g. divided by 0.0001 in satellites).
-            cor=1
-        else:
-            cor=mean_gauge/mean_sat
-        cor_append_MBC=[sat[i][0],cor]
-        cor_factor_MBC.append(cor_append_MBC)
+    cor_factor_MBC=[] #Create a list to store MBC correction factors
+    cor_factor_RIDW=[] #Create a list to store RIDW correction factors
+    sat=sat_interval['Rainfall_02649002'] #For first interaction
+    for i in range(len(sat)): #Iterate over time series.
+        cor_RIDW_append=[sat[i][0]] #Add date to cor_RIDW_append.
+        mean_sat=0 #Mean satellite measurement.
+        mean_gauge=0 #Mean gauge measurement.
+        for j in sat_interval.keys(): #Iterate over gauge stations.
+            if j in codes_adp: #Only consider the station if it is included in Group 1.
+                sat=sat_interval[j] #Get satellite time series.
+                gauge=gauge_interval[j] #Get gauge time series.
+                mean_sat=mean_sat+sat[i][1] #Add satellite estimate to mean_sat (for MBC).
+                mean_gauge=mean_gauge+gauge[i][1] #Add gauge estimate to mean_gauge (for MBC).
+                dif=gauge[i][1]-sat[i][1] #Calculate the difference between satellite and gauge estimates (for RIDW).
+                cor_RIDW_append.append(dif) #Append the difference to the cor_RIDW_append list.
+        cor_factor_RIDW.append(cor_RIDW_append) #Append cor_RIDW_append to cor_factor_RIDW.
+        if mean_sat<1:
+            cor=1 #Adopt correction factor as 1 (no correction) when satellite measurements are much lower than 1. This avoids the estimation of unrealistic multiplicative
+                  #bias correction factors.
+        else: #In any other case.
+            cor=mean_gauge/mean_sat #Calculate correction factor for MBC.
+        cor_append_MBC=[sat[i][0],cor] #Add date and correction factor to cor_append_MBC.
+        cor_factor_MBC.append(cor_append_MBC) #Append cor_append_MBC to cor_factor_MBC.
 
-    #Store the cor factor values from MBC for the boxplot
-    boxplot=[row[1] for row in cor_factor_MBC]
-
-    #Interpolate the RIDW correction factors to the target locations (pixel centers - different for GSMaP and IMERG products)
+    #Interpolate the RIDW correction factors to the target locations (pixel centers from Group 2 gauges).
     #Create a dictionary to store the interpolated differences
     diff={}
-    #Iterate over the list targetloc, containing the location of the pixel centers
-    for i in range(len(targetloc)):
-        if targetloc[i][0] in codes2:
-            rainfall_list=[]
-            for j in cor_factor_RIDW:
-                vidi=0
-                onedi=0
-                for k in range(len(j)-1):
-                    source_rainfall=j[k+1]
-                    di=((((int(targetloc[i][1])-int(codes1[k][1]))**2)+((int(targetloc[i][2])-int(codes1[k][2]))**2))**0.5)
-                    vidi=vidi+(source_rainfall/di)
-                    onedi=onedi+(1/di)
-                v0=vidi/onedi
-                rainfall_list.append([j[0],v0])
-            diff[targetloc[i][0]]=rainfall_list
+    for i in range(len(targetloc)): #Iterate over the list targetloc, containing the location of the pixel centers.
+        if targetloc[i][0] in codes2: #Only consider the target locations that contains the gauge stations from Group 2. Eliminate the ones from Group 1.
+            rainfall_list=[] #Create a list to store the interpolated correction factors.
+            for j in cor_factor_RIDW: #Iterate over the time series of correction factors.
+                vidi=0 #Reset vidi.
+                onedi=0 #Reset onedi.
+                for k in range(len(j)-1): #Iterate over the list of  corrections factors for each date. The list refers to all correction factors associated with the gauges
+                    #from Group 1.
+                    source_rainfall=j[k+1] #Extract differential correction factor at the location of the gauge from Group 1.
+                    di=((((int(targetloc[i][1])-int(codes1[k][1]))**2)+((int(targetloc[i][2])-int(codes1[k][2]))**2))**0.5) #Calculate the distance between the gauge from
+                    #Group 1 and the target location at the gauge from Group 2.
+                    vidi=vidi+(source_rainfall/di) #Update vidi based on the distance and correction factor at Group 1.
+                    onedi=onedi+(1/di) #Update onedi based on the distance.
+                v0=vidi/onedi #Calculate the differential correction factor at the target location (gauge from Group 2).
+                rainfall_list.append([j[0],v0]) #Append the date and the interpolated correction factor to the rainfall_list, which corresponds to a specific gauge from Group 2.
+            diff[targetloc[i][0]]=rainfall_list #Add the rainfall_list to the dictionary and move to the next target location.
     
     #Apply the correction factors to the daily satellite estimates.
-    #Create a date_list countaining all the days from 01-07-2000 to 01-07-2020
+    #Create a date_list containing all the days from 01-07-2000 to 01-07-2020
     date_list=[]
-    for day in range(0,7305): #Increase days 1 by 1 until the present date
+    for day in range(0,7305): #Increase days 1 by 1 until the present date, starting with 01-07-2000.
         date = (datetime.date(2000,7,1) + datetime.timedelta(days=day))
         date_list.append(date)
 
-    #Calculate the daily correction factors for MBC
-    cor_factor_daily_MBC=[]
-    for i in range(len(date_list)):
-        for j in range(len(cor_factor_MBC)):
-            if datelabel=="3daily":
-                if j==len(cor_factor_MBC)-1:
-                    if date_list[i]>=cor_factor_MBC[j][0]:
-                        cor_append=[date_list[i],cor_factor_MBC[j][1]]
+    #Extract the correction factor corresponding to each day of the time series, for MBC.
+    cor_factor_daily_MBC=[] #Create a list to store the daily correction factors.
+    for i in range(len(date_list)): #Iterate over the date_list.
+        for j in range(len(cor_factor_MBC)): #Iterate over the correction factors time series.
+            if datelabel=="3daily": #For 3-daily timesteps.
+                if j==len(cor_factor_MBC)-1: #Last date in the correction factors time series.
+                    if date_list[i]>=cor_factor_MBC[j][0]: #If date in date_list is more recent than date in cor_factor_MBC.
+                        cor_append=[date_list[i],cor_factor_MBC[j][1]] #Adopt the corresponding correction factor to the date of date_list.
                         cor_factor_daily_MBC.append(cor_append)
-                else:
-                    if cor_factor_MBC[j][0]<=date_list[i]<cor_factor_MBC[j+1][0]:
-                        cor_append=[date_list[i],cor_factor_MBC[j][1]]
+                else: #In any other case.
+                    if cor_factor_MBC[j][0]<=date_list[i]<cor_factor_MBC[j+1][0]: #If date in date_list is between the date in the cor_factor_MBC and the following date in
+                        #the cor_factor_MBC.
+                        cor_append=[date_list[i],cor_factor_MBC[j][1]] #Adopt the corresponding correction factor to the date of date_list.
                         cor_factor_daily_MBC.append(cor_append)
-            elif datelabel=="monthly":
-                if (date_list[i].month==cor_factor_MBC[j][0].month) and (date_list[i].year==cor_factor_MBC[j][0].year):
-                    cor_append=[date_list[i],cor_factor_MBC[j][1]]
+            elif datelabel=="monthly": #For monthly timesteps.
+                if (date_list[i].month==cor_factor_MBC[j][0].month) and (date_list[i].year==cor_factor_MBC[j][0].year): #If month and year of the date_list is equal to month
+                    #and year of cor_factor_MBC.
+                    cor_append=[date_list[i],cor_factor_MBC[j][1]] #Adopt the corresponding correction factor to the date of date_list.
                     cor_factor_daily_MBC.append(cor_append)
 
-    #Calculate the daily correction factors for RIDW
-    cor_factor_daily_RIDW={}
-    for i in diff.keys():
-        rain_daily=sat_daily[i]
-        rain_interval=sat_interval[i]
-        diff_px=diff[i]
-        cor_daily_RIDW=[]
-        for j in range(len(date_list)):
-            for k in range(len(diff_px)):
-                if datelabel=="3daily":                    
-                    if k==len(diff_px)-1:
-                        if date_list[j]>=diff_px[k][0]:
-                            if rain_interval[k][1]==0:
-                                cor=0
-                            else:
-                                cor=diff_px[k][1]*(rain_daily[j][1]/rain_interval[k][1])
-                            cor_append=[date_list[j],cor]
+    #Extract the correction factor corresponding to each day of the time series, for RIDW.
+    cor_factor_daily_RIDW={} #Create a dictionary to store the correction factors at the location of each gauge from Group 2.
+    for i in diff.keys(): #Iterate over rain gauges from Group 2.
+        rain_daily=sat_daily[i] #Get daily rainfall of the satellite product (for the temporal disggregation of the correction factors).
+        rain_interval=sat_interval[i] #Get rainfall of the satellite product at the temporal scale of the merging technique timestep (for the temporal disaggregation).
+        diff_px=diff[i] #Get the list of correction factors at the location of each gauge from Group 2.
+        cor_daily_RIDW=[] #Create a list to store the daily correction factors.
+        for j in range(len(date_list)): #Iterate over the daily time series.
+            for k in range(len(diff_px)): #Iterate over the list of correction factors.
+                if datelabel=="3daily": #If timestep is 3-daily.
+                    if k==len(diff_px)-1: #For the last correction factor of the time series.
+                        if date_list[j]>=diff_px[k][0]: #If date in date_list is more recent than date in correction factor list.
+                            if rain_interval[k][1]==0: #If satellite rainfall in the timestep of the merging technique is 0.
+                                cor=0 #Adopt a correction factor of 0.
+                            else: #In any other case.
+                                cor=diff_px[k][1]*(rain_daily[j][1]/rain_interval[k][1]) #Perform the temporal disaggregation of the differential correction factor.
+                            cor_append=[date_list[j],cor] #Add the correction factor to the corresponding date of date_list.
                             cor_daily_RIDW.append(cor_append)
-                    else:
-                        if diff_px[k][0]<=date_list[j]<diff_px[k+1][0]:
-                            if rain_interval[k][1]==0:
-                                cor=0
-                            else:
-                                cor=diff_px[k][1]*(rain_daily[j][1]/rain_interval[k][1])
-                            cor_append=[date_list[j],cor]
+                    else: #In any other case.
+                        if diff_px[k][0]<=date_list[j]<diff_px[k+1][0]: #If date in date_list is between the date in the correction factor list and the following date in
+                            #the correction factor list.
+                            if rain_interval[k][1]==0: #If satellite rainfall in the timestep of the merging technique is 0.
+                                cor=0 #Adopt a correction factor of 0.
+                            else: #In any other case.
+                                cor=diff_px[k][1]*(rain_daily[j][1]/rain_interval[k][1]) #Perform the temporal disaggregation of the differential correction factor.
+                            cor_append=[date_list[j],cor] #Add the correction factor to the corresponding date of date_list.
                             cor_daily_RIDW.append(cor_append)
-                elif datelabel=="monthly":                    
-                    if (date_list[j].month==diff_px[k][0].month) and (date_list[j].year==diff_px[k][0].year):
-                        if rain_interval[k][1]==0:
-                            cor=0
-                        else:
-                            cor=diff_px[k][1]*(rain_daily[j][1]/rain_interval[k][1])
-                        cor_append=[date_list[j],cor]
+                elif datelabel=="monthly": #If timestep is monthly.                
+                    if (date_list[j].month==diff_px[k][0].month) and (date_list[j].year==diff_px[k][0].year): #If month and year of the date_list is equal to the month
+                        #and year of the correction factor list.
+                        if rain_interval[k][1]==0: #If satellite rainfall in the timestep of the merging technique is 0.
+                            cor=0 #Adopt a correction factor of 0.
+                        else: #In any other case.
+                            cor=diff_px[k][1]*(rain_daily[j][1]/rain_interval[k][1]) #Perform the temporal disaggregation of the differential correction factor.
+                        cor_append=[date_list[j],cor] #Add the correction factor to the corresponding date of date_list.
                         cor_daily_RIDW.append(cor_append)
-        cor_factor_daily_RIDW[i]=cor_daily_RIDW
+        cor_factor_daily_RIDW[i]=cor_daily_RIDW #Add the correction factors at the target location to the dictionary, and move to the next target location.
 
-    #Apply the correction factor of MBC and RIDW to the daily satellite estimates
-    prec_sat_daily_MBC={}
-    prec_sat_daily_RIDW={}
-    for i in sat_daily.keys():
-        if i in codes2:
-            cor_daily_RIDW=cor_factor_daily_RIDW[i]
-            sat=sat_daily[i]
-            sat_list_MBC=[]
-            sat_list_RIDW=[]            
-            for j in range(len(sat)):
-                sat_prec_MBC=sat[j][1]*cor_factor_daily_MBC[j][1]
-                sat_prec_RIDW=sat[j][1]+cor_daily_RIDW[j][1]
-                if sat_prec_RIDW<0:#Cannot have negative values. In case of negatives, assume 0.
-                    sat_prec_RIDW=0
-                sat_append_MBC=[sat[j][0],sat_prec_MBC]
-                sat_append_RIDW=[sat[j][0],sat_prec_RIDW]
-                sat_list_MBC.append(sat_append_MBC)
-                sat_list_RIDW.append(sat_append_RIDW)
-            prec_sat_daily_MBC[i]=sat_list_MBC
-            prec_sat_daily_RIDW[i]=sat_list_RIDW
+    #Apply the correction factor of MBC and RIDW to the daily satellite estimates.
+    prec_sat_daily_MBC={} #Create dictionary to store MBC.
+    prec_sat_daily_RIDW={} #Create dictionary to store RIDW.
+    for i in sat_daily.keys(): #Iterate over raing gauges.
+        if i in codes2: #Only adopt rain gauges from Group 2.
+            cor_daily_RIDW=cor_factor_daily_RIDW[i] #Get the RIDW correction factors for the analyzed target location.
+            sat=sat_daily[i] #Get satellite time series.
+            sat_list_MBC=[] #Create list to store corrected estimates for MBC.
+            sat_list_RIDW=[] #Create list to store corrected estimated for RIDW.
+            for j in range(len(sat)): #Iterate over time series.
+                sat_prec_MBC=sat[j][1]*cor_factor_daily_MBC[j][1] #Correct satellite estimates with MBC (multiplication).
+                sat_prec_RIDW=sat[j][1]+cor_daily_RIDW[j][1] #Correct satellite estimated with RIDW (difference).
+                if sat_prec_RIDW<0: #Check if RIDW resuted in negative values, which are physically impossible.
+                    sat_prec_RIDW=0 #In case values are negative, adopt estimate as 0.
+                sat_append_MBC=[sat[j][0],sat_prec_MBC] #Add date and corrected rainfall estimates for MBC.
+                sat_append_RIDW=[sat[j][0],sat_prec_RIDW] #Add date and corrected rainfall estimates for RIDW.
+                sat_list_MBC.append(sat_append_MBC) #Append sat_append_MBC to sat_list_MBC.
+                sat_list_RIDW.append(sat_append_RIDW) #Append sat_append_RIDW to sat_list_RIDW.
+            prec_sat_daily_MBC[i]=sat_list_MBC #Add the MBC corrected estimates from a gauge from Group 2 to the dictionary, and move to the next gauge.
+            prec_sat_daily_RIDW[i]=sat_list_RIDW #Add the RIDW corrected estimates from a gauge from Group 2 to the dictionary, and move to the next gauge.
 
     #Aggregate the daily estimates into 3-daily and monthly estimates.
-    prec_sat_3daily_MBC={}
-    prec_sat_3daily_RIDW={}
-    for i in prec_sat_daily_MBC.keys():
-        sat_MBC=prec_sat_daily_MBC[i]
-        sat_RIDW=prec_sat_daily_RIDW[i]
-        prec_3daily_MBC=[]
-        prec_3daily_RIDW=[]
-        k=1
-        for j in range(len(sat_MBC)):
+    prec_sat_3daily_MBC={} #Create dictionary for 3-daily (MBC).
+    prec_sat_3daily_RIDW={} #Create dictionary for 3-daily (RIDW).
+    for i in prec_sat_daily_MBC.keys(): #Iterate over rain gauges.
+        sat_MBC=prec_sat_daily_MBC[i] #Get daily satellite data (MBC).
+        sat_RIDW=prec_sat_daily_RIDW[i] #Get daily satellite data (RIDW).
+        prec_3daily_MBC=[] #Create a list to store 3-daily values (MBC).
+        prec_3daily_RIDW=[] #Create a list to store 3-daily values (RIDW).
+        k=1 #Create count.
+        for j in range(len(sat_MBC)): #Iterate over time series.
             if k==1:
                 prec_append_MBC=[sat_MBC[j][0]]
                 prec_append_RIDW=[sat_RIDW[j][0]]
@@ -214,25 +220,25 @@ def merge(sat_daily,sat_interval,gauge_daily,gauge_interval,targetloc,codes1,cod
                 prec_3daily_MBC.append(prec_append_MBC)
                 prec_3daily_RIDW.append(prec_append_RIDW)
                 k=1
-        prec_sat_3daily_MBC[i]=prec_3daily_MBC
-        prec_sat_3daily_RIDW[i]=prec_3daily_RIDW
+        prec_sat_3daily_MBC[i]=prec_3daily_MBC #Add the time series of the gauge to the dictionary (MBC).
+        prec_sat_3daily_RIDW[i]=prec_3daily_RIDW #Add the time series of the gauge to the dictionary (RIDW).
 
     #Aggregate into monthly
-    prec_sat_monthly_MBC={}
-    prec_sat_monthly_RIDW={}
-    for i in prec_sat_daily_MBC.keys():
-        sat_MBC=prec_sat_daily_MBC[i]
-        sat_RIDW=prec_sat_daily_RIDW[i]
-        prec_monthly_MBC=[]
-        prec_monthly_RIDW=[]
-        for j in range(len(sat_MBC)):
-            if j==0:
+    prec_sat_monthly_MBC={} #Create dictionary for monthly estimates (MBC).
+    prec_sat_monthly_RIDW={} #Create dictionary for monthly estimates (RIDW).
+    for i in prec_sat_daily_MBC.keys(): #Iterate over rain gauges.
+        sat_MBC=prec_sat_daily_MBC[i] #Get daily satellite data (MBC).
+        sat_RIDW=prec_sat_daily_RIDW[i] #Get daily satellite data (RIDW).
+        prec_monthly_MBC=[] #Create list to store monthly values (MBC).
+        prec_monthly_RIDW=[] #Create list to store monthly values (RIDW).
+        for j in range(len(sat_MBC)): #Iterate over time series.
+            if j==0: #For the first date of the time series.
                 prec_MBC=sat_MBC[j][1]
                 prec_RIDW=sat_RIDW[j][1]
-            elif sat_MBC[j][0].month==sat_MBC[j-1][0].month and j!=len(sat_MBC)-1:
-                prec_MBC=prec_MBC+sat_MBC[j][1]
-                prec_RIDW=prec_RIDW+sat_RIDW[j][1]
-            elif j==len(sat_MBC)-1:
+            elif sat_MBC[j][0].month==sat_MBC[j-1][0].month and j!=len(sat_MBC)-1: #If month of the estimate is equal to the month of the previous estimate.
+                prec_MBC=prec_MBC+sat_MBC[j][1] #Accumulate rainfall values.
+                prec_RIDW=prec_RIDW+sat_RIDW[j][1] #Accumulate rainfall values.
+            elif j==len(sat_MBC)-1: #For the last date of the time series.
                 date=datetime.date(int(sat_MBC[j][0].year),int(sat_MBC[j][0].month),1)
                 prec_append_MBC=[date,prec_MBC]
                 prec_append_RIDW=[date,prec_RIDW]
@@ -249,75 +255,17 @@ def merge(sat_daily,sat_interval,gauge_daily,gauge_interval,targetloc,codes1,cod
         prec_sat_monthly_MBC[i]=prec_monthly_MBC
         prec_sat_monthly_RIDW[i]=prec_monthly_RIDW
 
-    #Save the corrected satellite estimates (v1).
-    #os.chdir(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\SGMerged\Output")
-    #np.save("prec_"+satlabel+"_daily_MBC"+datelabel+".npy", prec_sat_daily_MBC)
-    #np.save("prec_"+satlabel+"_3daily_MBC"+datelabel+".npy", prec_sat_3daily_MBC)
-    #np.save("prec_"+satlabel+"_monthly_MBC"+datelabel+".npy", prec_sat_monthly_MBC)
-    #np.save("prec_"+satlabel+"_daily_RIDW"+datelabel+".npy", prec_sat_daily_RIDW)
-    #np.save("prec_"+satlabel+"_3daily_RIDW"+datelabel+".npy", prec_sat_3daily_RIDW)
-    #np.save("prec_"+satlabel+"_monthly_RIDW"+datelabel+".npy", prec_sat_monthly_RIDW)
-             
-    #ENABLE THE NEXT LINES OF THE SCRIPT TO APPLY THE MERGING TECHNIQUE TO .TIF FILES.
-    #If the validation presented better results than the results demonstrated before, apply these
-    #correction factors to each hourly rainfall map.
-    #Import the names of the files in the directory
-    directory=r'C:\Users\cassi\Desktop\Personal\Applications\PhD\Potsdam\Interview\Data\GSMaP'#Path with the satellite data to be corrected
-    sat_maps_names=[] #Create a list to store the codes of the stations and associate these codes with the dictionary
-    for entry in os.scandir(directory):
-        sat_maps_names.append(entry.name)
+    #Save the corrected satellite estimates for both MBC and RIDW merging techniques.
+    os.chdir(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\SGMerged\Output")
+    np.save("prec_"+satlabel+"_daily_MBC"+datelabel+".npy", prec_sat_daily_MBC)
+    np.save("prec_"+satlabel+"_3daily_MBC"+datelabel+".npy", prec_sat_3daily_MBC)
+    np.save("prec_"+satlabel+"_monthly_MBC"+datelabel+".npy", prec_sat_monthly_MBC)
+    np.save("prec_"+satlabel+"_daily_RIDW"+datelabel+".npy", prec_sat_daily_RIDW)
+    np.save("prec_"+satlabel+"_3daily_RIDW"+datelabel+".npy", prec_sat_3daily_RIDW)
+    np.save("prec_"+satlabel+"_monthly_RIDW"+datelabel+".npy", prec_sat_monthly_RIDW)
 
-    #Create a list with the dates related to each rainfall maps.
-    sat_maps_dates=[]
-    for i in sat_maps_names:
-        date=datetime.date(int(i[:4]),int(i[4:6]),int(i[6:8]))
-        sat_maps_dates.append(date)
-
-    #Import each tiff file as a np.array into a np.dictionary
-    os.chdir(r'C:\Users\cassi\Desktop\Personal\Applications\PhD\Potsdam\Interview\Data\GSMaP')
-    for i in range(len(sat_maps_names)):
-        rainfall_map_tif=gdal.Open(sat_maps_names[i])
-        proj=rainfall_map_tif.GetProjection()
-        geotr=rainfall_map_tif.GetGeoTransform()
-        cols=rainfall_map_tif.RasterXSize
-        rows=rainfall_map_tif.RasterYSize
-        driver=gdal.GetDriverByName("GTiff")
-        rainfall_map_array=np.array(rainfall_map_tif.GetRasterBand(1).ReadAsArray())
-        for j in range(len(cor_factor_daily_MBC)):
-            if cor_factor_daily_MBC[j][0]==sat_maps_dates[i]:
-                factor=cor_factor_daily_MBC[j][1]
-        rainfall_map_array_v1=rainfall_map_array*factor
-        rainfall_map_tif_v1=driver.Create(r"C:\Users\cassi\Desktop\Personal\Applications\PhD\Potsdam\Interview\Data\GSMaP_MBC\_"+sat_maps_names[i],cols,rows,1,gdal.GDT_Float32)
-        rainfall_map_tif_v1.GetRasterBand(1).WriteArray(rainfall_map_array_v1)    
-        rainfall_map_tif_v1.SetGeoTransform(geotr)
-        rainfall_map_tif_v1.SetProjection(proj)
-
-#Run the function to create output data and graphs for the merging techniques
-#merge(GSMaP_daily,GSMaP_monthly,gauge_daily,gauge_monthly,targetloc,codes1,codes2,"monthly","GSMaP")
+#Run the function for both satellite products (GSMaP and IMERG) and timesteps (daily and 3-daily)
+merge(GSMaP_daily,GSMaP_monthly,gauge_daily,gauge_monthly,targetloc,codes1,codes2,"monthly","GSMaP")
 merge(GSMaP_daily,GSMaP_3daily,gauge_daily,gauge_3daily,targetloc,codes1,codes2,"3daily","GSMaP")
-#merge(IMERG_daily,IMERG_monthly,gauge_daily,gauge_monthly,targetloc,codes1,codes2,"monthly","IMERG")
-#merge(IMERG_daily,IMERG_3daily,gauge_daily,gauge_3daily,targetloc,codes1,codes2,"3daily","IMERG")
-
-#Plot the boxplot for the correction factors
-#font = {'size': 10}
-#plt.rc('font', **font)
-#fig,(ax1,ax2)=plt.subplots(1,2)
-#boxprops=dict(linewidth=1, color='black')
-#flierprops=dict(markersize=4,markeredgewidth=0.5)
-#medianprops=dict(linewidth=1.2, color='blue')
-#ax1.boxplot(boxplot,flierprops=flierprops,medianprops=medianprops,boxprops=boxprops)
-#ax2.boxplot(boxplot,showfliers=False,medianprops=medianprops,boxprops=boxprops)
-#ax1.tick_params(axis='both', which='major', labelsize=8)
-#ax1.set_xlabel("Rainfall products",fontsize=10)
-#ax1.set_ylabel("Bias correction factor",fontsize=10)
-#ax2.tick_params(axis='both', which='major', labelsize=8)
-#ax2.set_xlabel("Rainfall products",fontsize=10)
-#ax2.set_ylabel("Bias correction factor",fontsize=10)
-#ax1.set_yscale('log')
-#ax2.set_ylim(0,5)
-#ax1.set_xticklabels(['GSMaP\n3-daily','GSMaP\nmonthly','IMERG\n3-daily','IMERG\nmonthly'])
-#ax2.set_xticklabels(['GSMaP\n3-daily','GSMaP\nmonthly','IMERG\n3-daily','IMERG\nmonthly'])
-#fig.set_size_inches(6,2.5)
-#fig.subplots_adjust(bottom=0.21,left=0.10,right=0.97,top=0.96,wspace=0.24,hspace=0.43)
-#fig.savefig(r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\SGMerged\Graphs\MBC_Boxplot.jpg')
-#plt.close()
+merge(IMERG_daily,IMERG_monthly,gauge_daily,gauge_monthly,targetloc,codes1,codes2,"monthly","IMERG")
+merge(IMERG_daily,IMERG_3daily,gauge_daily,gauge_3daily,targetloc,codes1,codes2,"3daily","IMERG")
