@@ -1,3 +1,10 @@
+#################################
+## Created by: C. B. Moroz ######
+#################################
+
+#Description: code to extract the extreme values from the Google Earth Engine time series of the GSMaP product, and to use the extreme values to
+#generate spatially distributed design storms from intensity-duration-frequency curves.
+
 import csv
 import os
 import math
@@ -8,6 +15,153 @@ import numpy as np
 import copy
 from osgeo import gdal
 import seaborn as sns
+import ee
+import datetime
+from osgeo import osr
+import time
+
+#Inititalize the Google Earth Engine API
+ee.Initialize()
+
+#Create a rectangle to clip the satellite images only to the region of the Itajai River Basin
+rec = ee.Geometry.Rectangle([-50.5, -28, -48.5, -26])
+
+#Import the correction factors.
+directory=r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\InputData"
+os.chdir(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\InputData")
+cor_factor=np.load("cor_monthly_GSMaP.npy",allow_pickle=True).tolist()
+
+#Iterate for all hours, from 1 to 24:
+for year in range(2018,2019):
+    for hour in [1]:
+        #Create an array with the same dimensions as the satellite image.
+        if hour in [1,2,3,4,5,6,7,8]:
+            collection=ee.ImageCollection("JAXA/GPM_L3/GSMaP/v6/operational").filterDate(str(year)+'-07-01T00:00:00',str(year)+'-07-01T0'+str(hour)+':00:00').filterBounds(rec).select('hourlyPrecipRateGC')
+        elif hour==24:
+            collection=ee.ImageCollection("JAXA/GPM_L3/GSMaP/v6/operational").filterDate(str(year)+'-07-01T00:00:00',str(year)+'-07-02T00:00:00').filterBounds(rec).select('hourlyPrecipRateGC')
+        else:
+            collection=ee.ImageCollection("JAXA/GPM_L3/GSMaP/v6/operational").filterDate(str(year)+'-07-01T00:00:00',str(year)+'-07-01T'+str(hour)+':00:00').filterBounds(rec).select('hourlyPrecipRateGC')
+        rainfall=collection.reduce(ee.Reducer.mean())
+        latlon = ee.Image.pixelLonLat().addBands(rainfall)
+        #Apply reducer to select only the pixels within the boundaries of the polygon "rec", or the Itajai River Basin region
+        latlon = latlon.reduceRegion(reducer=ee.Reducer.toList(),geometry=rec,maxPixels=1e8,scale=10609)    
+        #Get data into three different arrays: one for lat, one for lon, and one for the cumulative rainfall
+        data = np.array((ee.Array(latlon.get("hourlyPrecipRateGC_mean")).getInfo()))
+        lats = np.array((ee.Array(latlon.get("latitude")).getInfo()))
+        lons = np.array((ee.Array(latlon.get("longitude")).getInfo()))
+        #Get the unique coordinates
+        uniqueLats = np.unique(lats)
+        uniqueLons = np.unique(lons)
+        #Get the number of rows and columns based on the coordinates
+        ncols = len(uniqueLons)
+        nrows = len(uniqueLats)
+        #Determine pixel sizes
+        ys = uniqueLats[1] - uniqueLats[0] 
+        xs = uniqueLons[1] - uniqueLons[0]
+        #Create the numpy array with the same dimensions
+        ref_arr = np.zeros([nrows, ncols], np.float32)
+        arr = np.zeros([nrows, ncols], np.float32)
+        #Fill the array with values
+        counter=0
+        for y in range(0,len(arr),1):
+            for x in range(0,len(arr[0]),1):
+                if lats[counter] == uniqueLats[y] and lons[counter] == uniqueLons[x] and counter < len(lats)-1:
+                    counter+=1
+                    arr[len(uniqueLats)-1-y,x] = data[counter]
+        #Apply the correction factor to the date
+        for i in range(len(cor_factor)):
+            if cor_factor[i][0].month == 7 and cor_factor[i][0].year == year:
+                corr=cor_factor[i][1]
+                break
+        arr_cor=arr*corr
+        #SetGeoTransform((originX, pixelWidth, 0, originY, 0, pixelHeight))
+        transform = (np.min(uniqueLons),xs,0,np.max(uniqueLats),0,-ys)
+        #Set the coordinate system
+        target = osr.SpatialReference()
+        target.ImportFromEPSG(4326)
+        #Set driver
+        driver = gdal.GetDriverByName('GTiff')
+        #Convert the GEE collection to a nested list (check how much time it takes).
+        start_date_dt=datetime.date(year,7,1)
+        start_hour=0
+        while ((start_date_dt < datetime.date(year+1,7,1))==True):
+            end_hour=start_hour+hour
+            start_year=str(start_date_dt.year)
+            start_month=str(start_date_dt.month)
+            start_day=str(start_date_dt.day)
+            if end_hour>23:
+                end_hour=end_hour-24
+                end_date=(start_date_dt+datetime.timedelta(days=1))
+                end_year=str(end_date.year)
+                end_month=str(end_date.month)
+                end_day=str(end_date.day)
+            else:
+                end_year=str(start_date_dt.year)
+                end_month=str(start_date_dt.month)
+                end_day=str(start_date_dt.day)        
+
+            #Define the start and end dates for the collection:
+            start_date = start_year+'-'+start_month+'-'+start_day+'T'+str(start_hour)+':00:00'
+            end_date = end_year+'-'+end_month+'-'+end_day+'T'+str(end_hour)+':00:00'
+
+            #Import the image collection, filtering it by date and selecting only the gauge-corrected band
+            if (start_date_dt.year<2014) or (start_date_dt.year==2014 and start_date_dt.month<3):
+                collection=ee.ImageCollection("JAXA/GPM_L3/GSMaP/v6/reanalysis").filterDate(start_date,end_date).filterBounds(rec).select('hourlyPrecipRateGC')
+            else:
+                collection=ee.ImageCollection("JAXA/GPM_L3/GSMaP/v6/operational").filterDate(start_date,end_date).filterBounds(rec).select('hourlyPrecipRateGC')
+            #Apply reducer to select only the pixels within the boundaries of the polygon "rec", or the Itajai River Basin region
+            rainfall=collection.reduce(ee.Reducer.mean())
+            latlon = ee.Image.pixelLonLat().addBands(rainfall)
+            latlon = latlon.reduceRegion(reducer=ee.Reducer.toList(),geometry=rec,maxPixels=1e8,scale=10609)
+        
+            #Get the data from the specific date
+            data=np.array((ee.Array(latlon.get("hourlyPrecipRateGC_mean"),ee.PixelType.float()).getInfo()))
+
+            if data.size>0:
+                data=np.array((ee.Array(latlon.get("hourlyPrecipRateGC_mean")).getInfo()))
+        
+                #Create a prov array with the same characteristics as the previous
+                prov_arr=ref_arr
+                #Fill the provisory array with the rainfall data
+                counter=0
+                for y in range(0,len(prov_arr),1):
+                    for x in range(0,len(prov_arr[0]),1):
+                        if lats[counter] == uniqueLats[y] and lons[counter] == uniqueLons[x] and counter < len(lats)-1:
+                            counter+=1
+                            prov_arr[len(uniqueLats)-1-y,x] = data[counter]
+                #Apply the correction factor to the date
+                for i in range(len(cor_factor)):
+                    if start_date_dt.month == cor_factor[i][0].month and start_date_dt.year == cor_factor[i][0].year:
+                        corr=cor_factor[i][1]
+                        break
+                prov_arr_cor=prov_arr*corr
+
+                #Get the maximum value
+                arr_cor=np.maximum(prov_arr_cor,arr_cor)    
+
+            #Transform the numpy array into a list
+            #arr_list=prov_arr_cor.tolist()
+
+            #Iterate the start hour, sum 1 hours to the next image
+            start_hour=start_hour+1
+            if start_hour==24:
+                start_hour=0
+                start_date_dt=(start_date_dt+datetime.timedelta(days=1))
+
+        #Save the image for the specific hour
+        outputDataset=driver.Create(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\InputData\GSMaP-gauge\DS_"+str(year)+"_"+str(hour)+"h.tif", ncols,nrows, 1,gdal.GDT_Float32)
+        #Add some information
+        outputDataset.SetGeoTransform(transform)
+        outputDataset.SetProjection(target.ExportToWkt())
+        outputDataset.GetRasterBand(1).WriteArray(arr_cor)
+        outputDataset.GetRasterBand(1).SetNoDataValue(-9999)
+        outputDataset = None
+        
+    #Append the list to the dictionary sat_merged
+    #sat_merged['2000']=arr_list   
+
+#os.chdir(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\OutputData")
+#np.save('sat_GSMaP_merged.npy', sat_merged)
 
 #Import the names of the files from each duration (1 hour to 24 hours)
 input_names=[] #Create a list to store the codes of the stations and associate these codes with the dictionary
