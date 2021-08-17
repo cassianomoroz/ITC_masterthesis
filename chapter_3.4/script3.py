@@ -203,23 +203,23 @@ def merge(sat_daily,sat_interval,gauge_daily,gauge_interval,targetloc,codes1,cod
         k=1 #Create count.
         for j in range(len(sat_MBC)): #Iterate over time series.
             if k==1:
-                prec_append_MBC=[sat_MBC[j][0]]
-                prec_append_RIDW=[sat_RIDW[j][0]]
-                prec_MBC=sat_MBC[j][1]
-                prec_RIDW=sat_RIDW[j][1]
-                k=k+1
+                prec_append_MBC=[sat_MBC[j][0]] #Add the date to prec_append_MBC.
+                prec_append_RIDW=[sat_RIDW[j][0]] #Add the date to prec_append_RIDW.
+                prec_MBC=sat_MBC[j][1] #Start calculating the cumulative rainfall.
+                prec_RIDW=sat_RIDW[j][1] #Start calculating the cumulative rainfall.
+                k=k+1 #Sum 1 to count.
             elif k==2:
-                prec_MBC=prec_MBC+sat_MBC[j][1]
-                prec_RIDW=prec_RIDW+sat_RIDW[j][1]
-                k=k+1
-            else:
-                prec_MBC=prec_MBC+sat_MBC[j][1]
-                prec_RIDW=prec_RIDW+sat_RIDW[j][1]
-                prec_append_MBC.append(prec_MBC)
-                prec_append_RIDW.append(prec_RIDW)
-                prec_3daily_MBC.append(prec_append_MBC)
-                prec_3daily_RIDW.append(prec_append_RIDW)
-                k=1
+                prec_MBC=prec_MBC+sat_MBC[j][1] #Add the rainfall estimate to prec_MBC.
+                prec_RIDW=prec_RIDW+sat_RIDW[j][1] #Add the rainfall estimate to prec_RIDW.
+                k=k+1 #Sum 1 to count.
+            else: #If k is higher than 2.
+                prec_MBC=prec_MBC+sat_MBC[j][1] #Add the rainfall estimate to prec_MBC.
+                prec_RIDW=prec_RIDW+sat_RIDW[j][1] #Add the rainfall estimate to prec_RIDW.
+                prec_append_MBC.append(prec_MBC) #Append the cumulative rainfall to prec_append_MBC.
+                prec_append_RIDW.append(prec_RIDW) #Append the cumulative rainfall to prec_append_RIDW.
+                prec_3daily_MBC.append(prec_append_MBC) #Append prec_append_MBC to prec_3daily_MBC.
+                prec_3daily_RIDW.append(prec_append_RIDW) #Append prec_append_RIDW to prec_3daily_RIDW.
+                k=1 #Reset count to 1.
         prec_sat_3daily_MBC[i]=prec_3daily_MBC #Add the time series of the gauge to the dictionary (MBC).
         prec_sat_3daily_RIDW[i]=prec_3daily_RIDW #Add the time series of the gauge to the dictionary (RIDW).
 
@@ -233,27 +233,27 @@ def merge(sat_daily,sat_interval,gauge_daily,gauge_interval,targetloc,codes1,cod
         prec_monthly_RIDW=[] #Create list to store monthly values (RIDW).
         for j in range(len(sat_MBC)): #Iterate over time series.
             if j==0: #For the first date of the time series.
-                prec_MBC=sat_MBC[j][1]
-                prec_RIDW=sat_RIDW[j][1]
+                prec_MBC=sat_MBC[j][1] #Start calculating the cumulative rainfall.
+                prec_RIDW=sat_RIDW[j][1] #Start calculating the cumulative rainfall.
             elif sat_MBC[j][0].month==sat_MBC[j-1][0].month and j!=len(sat_MBC)-1: #If month of the estimate is equal to the month of the previous estimate.
-                prec_MBC=prec_MBC+sat_MBC[j][1] #Accumulate rainfall values.
-                prec_RIDW=prec_RIDW+sat_RIDW[j][1] #Accumulate rainfall values.
+                prec_MBC=prec_MBC+sat_MBC[j][1] #Add the rainfall estimate to prec_MBC.
+                prec_RIDW=prec_RIDW+sat_RIDW[j][1] #Add the rainfall estimate to prec_RIDW.
             elif j==len(sat_MBC)-1: #For the last date of the time series.
-                date=datetime.date(int(sat_MBC[j][0].year),int(sat_MBC[j][0].month),1)
-                prec_append_MBC=[date,prec_MBC]
-                prec_append_RIDW=[date,prec_RIDW]
-                prec_monthly_MBC.append(prec_append_MBC)
-                prec_monthly_RIDW.append(prec_append_RIDW)   
-            else:
-                date=datetime.date(int(sat_MBC[j-1][0].year),int(sat_MBC[j-1][0].month),1) #Get the date of the previous day and relate it with the accumulated precipitation.
-                prec_append_MBC=[date,prec_MBC]
-                prec_append_RIDW=[date,prec_RIDW]
-                prec_monthly_MBC.append(prec_append_MBC)
-                prec_monthly_RIDW.append(prec_append_RIDW)
-                prec_MBC=sat_MBC[j][1]
-                prec_RIDW=sat_RIDW[j][1]
-        prec_sat_monthly_MBC[i]=prec_monthly_MBC
-        prec_sat_monthly_RIDW[i]=prec_monthly_RIDW
+                date=datetime.date(int(sat_MBC[j][0].year),int(sat_MBC[j][0].month),1) #Extract date.
+                prec_append_MBC=[date,prec_MBC] #Add date and cumulative precipitation to prec_append_MBC.
+                prec_append_RIDW=[date,prec_RIDW] #Add date and cumulative precipitation to prec_append_RIDW.
+                prec_monthly_MBC.append(prec_append_MBC) #Append prec_append_MBC to prec_monthly_MBC.
+                prec_monthly_RIDW.append(prec_append_RIDW)   #Append prec_append_RDIW to prec_monthly_RIDW. 
+            else: #If the month of the estimate is differente from the month of the previous estimate.
+                date=datetime.date(int(sat_MBC[j-1][0].year),int(sat_MBC[j-1][0].month),1) #Extract date of the previous measurement.
+                prec_append_MBC=[date,prec_MBC] #Add date and cumulative precipitation to prec_append_MBC.
+                prec_append_RIDW=[date,prec_RIDW] #Add date and cumulative precipitation to prec_append_RIDW.
+                prec_monthly_MBC.append(prec_append_MBC) #Append prec_append_MBC to prec_monthly_MBC.
+                prec_monthly_RIDW.append(prec_append_RIDW) #Append prec_append_RDIW to prec_monthly_RIDW. 
+                prec_MBC=sat_MBC[j][1] #Reset prec_MBC.
+                prec_RIDW=sat_RIDW[j][1] #Reset prec_RIDW.
+        prec_sat_monthly_MBC[i]=prec_monthly_MBC #Add the time series of the rain gauge to the dictionary (MBC).
+        prec_sat_monthly_RIDW[i]=prec_monthly_RIDW #Add the time series of the rain gauge to the dictionary (RIDW).
 
     #Save the corrected satellite estimates for both MBC and RIDW merging techniques.
     os.chdir(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\SGMerged\Output")
