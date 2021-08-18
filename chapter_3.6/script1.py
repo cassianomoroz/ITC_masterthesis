@@ -182,31 +182,20 @@ def ds(input_names):
         gumbel=-math.log(-math.log(pl)) #Calculate Gumbel reduced variate.
         RP_gumbel.extend([gumbel]) #Add the reduced variate to the list RP_gumbel.
 
-    #Set the parameters for the graph of IDF curves.
-    row=0
-    column=0
-    font = {'size': 10,'family':'Calibri'}
-    plt.rc('font', **font)
-    fig,axs=plt.subplots(3,4)
-    count1=0
-    count2=0
-
-    for name in input_names: #Iterate over series of extreme values, per duration. Each "name" variable refers
-        #to a .cvs file for a different rainfall duration.
-        count=0
+    for name in input_names: #Iterate over series of extreme values, per duration. Each "name" variable refers to a .cvs file for a different rainfall duration.
         EV_hour={} #Extreme values for a specific duration.
         LR_hour={} #Statistical parameters for a specific duration.
         RP_hour={} #Rainfall intensities per return period for a specific duration.
         EV_all=[] #Create a list to store the data of the extreme value .csv file.
-        boxplot_px=[]
+        boxplot_px=[] #List to store the R2 values for a specific pixel.
         
         #Open the extreme value .csv file.
         with open(name, newline='') as f:
             reader = csv.reader(f)
             EV_extend = list(reader)     
             EV_all.extend(EV_extend) #Fill the list EV_all.
-            r2max=0
-            r2min=1
+            r2max=0 #Start R2 maximum as the minimum value 0. So it can be updated by higher values.
+            r2min=1 #Start R2 minumum as the maximum value 1. So it can be updated by lower values.
             
             #Iterate over each pixel of the map. Perform the extreme value statistics for each pixel.
             for i in range(len(EV_all[0])): #Iterate over each column (pixel) of the extreme value file.
@@ -241,126 +230,82 @@ def ds(input_names):
                 regr.fit(x,y)
                 #Predict the gumbel values from the rainfall.
                 y_pred=regr.predict(x) #y_pred refers to the predicted annual maxima, in contradiction with the observed (EV_px_1).
-                #Calculate the R2 by comparing the predicted and observed rainfall intensity.
-                r2=round(r2_score(y,y_pred),2)
-                #Add y_pred to the dictionary
-                if count==0:
-                    EV_pred=np.array([y_pred])
-                else:
-                    y_pred_np=np.array([y_pred])
-                    EV_pred=np.concatenate((EV_pred,y_pred_np),axis=0)
-                #Plot the linear tendency line
-                if count2==0:
-                    axs[row,column].plot(x,y_pred,alpha=.4,color="silver",lw=0.8,zorder=1,label='Individual linear function')
-                else:
-                    axs[row,column].plot(x,y_pred,alpha=.4,color="silver",lw=0.8,zorder=1)
-                count=count+1
-                count2=count2+1
-                #Calculate the regression parameters per pixel: coefficient, intercept, R2 score and mean squared error
-                coef=[regr.coef_[0]]
-                itcp=[regr.intercept_]
-                r2=[r2_score(y,y_pred)]
-                if r2[0]>r2max:
-                    r2max=r2[0]
-                    ymax=y
-                    y_predmax=y_pred
-                    xmax=x
-                if r2[0]<r2min:
-                    r2min=r2[0]
-                    ymin=y
-                    y_predmin=y_pred
-                    xmin=x
-                boxplot_px.append(r2_score(y,y_pred))
-                mse=[mean_squared_error(y,y_pred)]
-                stats=coef+itcp+r2+mse
-                #Add the stats values to the dictionary LR_hour
-                LR_hour[i]=stats       
-                #Calculate the rainfall associated with each return period of 2, 5, 10 and 20 years
-                for k in RP_gumbel:
-                    rainfall=[itcp[0]+coef[0]*k]
-                    rainfall_RP.extend(rainfall)
-                #Add the rainfall, for each return period, for the related pixel, to the dictionary
+                #Calculate the regression parameters per pixel: coefficient, intercept, R2 score.
+                coef=[regr.coef_[0]] #Coefficient.
+                itcp=[regr.intercept_] #Intercept.
+                r2=[r2_score(y,y_pred)] #R2.
+                if r2[0]>r2max: #Check if the calculated R2 is higher than the previous R2 maximum.
+                    r2max=r2[0] #If higher, update r2max.
+                    ymax=y #Updated ymax.
+                    y_predmax=y_pred #Update y predicted max.
+                    xmax=x #Update xmax.
+                if r2[0]<r2min: #Check if the calculated R2 is lower than the previous R2 minimum.
+                    r2min=r2[0] #If lower, update r2min.
+                    ymin=y #Update ymin.
+                    y_predmin=y_pred #Update y predicted min.
+                    xmin=x #Update xmin.
+                boxplot_px.append(r2_score(y,y_pred)) #Append the R2 score of the analyzed pixel to the boxplot_px.
+                stats=coef+itcp+r2 #Create a list to store stats for the pixel.
+                #Add the stats values to the dictionary LR_hour, where i refers to the pixel ID.
+                LR_hour[i]=stats
+                #Calculate the rainfall intensity associated with each return period of 2, 5, 10 and 25 years.
+                for k in RP_gumbel: #Iterate over return periods.
+                    rainfall=[itcp[0]+coef[0]*k] #Calculate rainfall based on the fitted linear equation (Gumbel distribution).
+                    rainfall_RP.extend(rainfall) #Add the rainfall intensity to the list rainfall_RP.
+                #Add the list of rainfall intensities for the return periods of 2, 5, 10, and 25 years to the dictionary. i refers to the pixel ID.
                 RP_hour[i]=rainfall_RP
                 
             #Set the parameters for the graph of minimum and maximum R2, per duration.
             font = {'size': 10,'family':'Calibri'}
             plt.rc('font', **font)
             fig2,ax2=plt.subplots(1,2)
-            for ext in ['min','max']:
-                #Plot the points (observed)
-                if ext=='min':
-                    ax2[1].scatter(xmin,ymin,color=(0.41708573625528644, 0.6806305267204922, 0.8382314494425221),s=8,zorder=1,label='Annual maximum rainfall')
-                    #Plot the linear distribution (fitted)
-                    ax2[1].plot(xmin,y_predmin,'k--',lw=1.2,zorder=2,label='Linear function')
-                    ax2[1].set_title('(b) Min. R2 = 0.61',fontsize=10)
-                else:
-                    ax2[0].scatter(xmax,ymax,color=(0.41708573625528644, 0.6806305267204922, 0.8382314494425221),s=8,zorder=1)
-                    #Plot the linear distribution (fitted)
-                    ax2[0].plot(xmax,y_predmax,'k--',lw=1.2,zorder=2)
-                    ax2[0].set_title('(a) Max. R2 = 0.99',fontsize=10)
-            #Export the graph
+            for ext in ['min','max']: #Iterate over min and max graphs.
+                if ext=='min': #For the min graph.
+                    ax2[1].scatter(xmin,ymin,color=(0.41708573625528644, 0.6806305267204922, 0.8382314494425221),s=8,zorder=1,label='Annual maximum rainfall') #Minimum observed.
+                    ax2[1].plot(xmin,y_predmin,'k--',lw=1.2,zorder=2,label='Linear function') #Minimum predicted.
+                    ax2[1].set_title('(b) Min. R2 = 0.61',fontsize=10) #Set title.
+                else: #For the max graph.
+                    ax2[0].scatter(xmax,ymax,color=(0.41708573625528644, 0.6806305267204922, 0.8382314494425221),s=8,zorder=1) #Maximum observed.
+                    ax2[0].plot(xmax,y_predmax,'k--',lw=1.2,zorder=2) #Maximum predicted.
+                    ax2[0].set_title('(a) Max. R2 = 0.99',fontsize=10) #Set title.
             for i in [0,1]:
-                ax2[i].tick_params(axis='both', which='major', labelsize=8)
-                ax2[i].set_xticks(np.arange(-1, 4, 0.5))
-                ax2[i].set_xlim(-1.30,3.19)
-            fig2.text(0.52,0.13,'Gumbel reducted variate',fontsize=10,ha="center")
-            ax2[0].set_ylabel("Rainfall intensity (mm/h)",fontsize=10)
-            fig2.set_size_inches(5,2.5)
-            fig2.legend(loc="lower center", fontsize=8,ncol=4,frameon=False)
-            fig2.subplots_adjust(bottom=0.27,left=0.09,right=0.97,top=0.90,wspace=0.15,hspace=0.4)
-            #Activate the savefig function 
-            fig2.savefig(r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\Graphs\GumbelReport\Pixel'+str(i)+'_'+name[5:-4]+'_'+label+'.jpg',dpi=500)
-            plt.close()
+                ax2[i].tick_params(axis='both', which='major', labelsize=8) #Change tick properties.
+                ax2[i].set_xticks(np.arange(-1, 4, 0.5)) #Change limits.
+                ax2[i].set_xlim(-1.30,3.19) #Change limits.
+            fig2.text(0.52,0.13,'Gumbel reducted variate',fontsize=10,ha="center") #Add text.
+            ax2[0].set_ylabel("Rainfall intensity (mm/h)",fontsize=10) #Set label.
+            fig2.set_size_inches(5,2.5) #Set size of graph.
+            fig2.legend(loc="lower center", fontsize=8,ncol=4,frameon=False) #Set legend.
+            fig2.subplots_adjust(bottom=0.27,left=0.09,right=0.97,top=0.90,wspace=0.15,hspace=0.4) #Adjust margins.
+            fig2.savefig(r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\Graphs\GumbelReport\Pixel'+str(i)+'_'+name[5:-4]+'.jpg',dpi=500)
+            plt.close() #Close plot.
             
-            #Add the dictionaries from each duration to the main dictionary with all durations, from 1 to 24 hours
-            boxplot.append(boxplot_px)
-            EV[name[2:]]=EV_hour
-            LR[name[2:]]=LR_hour
-            RP[name[2:]]=RP_hour
-            
-            #Calculate and plot the average and standard deviation of Gumbel distrituions for each duration
-            avg=np.mean(EV_pred,axis=0)
-            std=np.std(EV_pred,axis=0)
-            #Plot the mean and std dev
-            if count1==0:
-                axs[row,column].fill_between(EV_gumbel,avg-std,avg+std,alpha=.6,color='royalblue',label='Standard deviation',lw=0,zorder=2)
-                axs[row,column].plot(EV_gumbel,avg,lw=1.2,color=(0.41708573625528644, 0.6806305267204922, 0.8382314494425221),label='Mean',zorder=3)
-                count1=1
-            else:
-                axs[row,column].fill_between(EV_gumbel,avg-std,avg+std,alpha=.6,color='royalblue',lw=0,zorder=2)
-                axs[row,column].plot(EV_gumbel,avg,lw=1.2,color=(0.41708573625528644, 0.6806305267204922, 0.8382314494425221),zorder=3)
-            if column==0 and row==1:
-                axs[row,column].set_ylabel("Rainfall intensity (mm/h)",fontsize=10)
-            elif column!=0:
-                axs[row,column].tick_params(axis='both',which='major',labelleft=False)
-            if row!=2:
-                axs[row,column].tick_params(axis='both',which='major',labelbottom=False)
-            #Iterate the graph
-            column=column+1
-            if column>3:
-                column=0
-                row=row+1
+            #Add the dictionaries for the analyzed duration to the main dictionary with all durations.
+            boxplot.append(boxplot_px) #Append the boxplot_px of the analyzed duration the entire series of R2 scores (boxplot).
+            EV[name[2:]]=EV_hour #Extreme values.
+            LR[name[2:]]=LR_hour #Statistical parameters.
+            RP[name[2:]]=RP_hour #Rainfall intensities per return period.
 
-    #Plot the boxplot for gumbel
+    #Plot the boxplot of the R2 scores per rainfall duration.
+    #Settle the graph.
     font = {'size': 10,'family':'Calibri'}
     plt.rc('font', **font)
     fig,ax1=plt.subplots(1,1)
-    boxprops = dict(linewidth=1, color='black')
-    flierprops=dict(markersize=4,markeredgewidth=0.5)
-    medianprops=dict(linewidth=0.8, color='black')
-    plt.boxplot(boxplot,positions=range(1,13,1),flierprops=flierprops,medianprops=medianprops,boxprops=boxprops)
-    ax1.tick_params(axis='both', which='major', labelsize=8)
-    ax1.set_xlabel("Rainfall duration (hours)",fontsize=10)
-    ax1.set_ylabel("Coefficient of\ndetermination (R2)",fontsize=10)
-    ax1.set_ylim(0.5,1)
-    ax1.set_xticklabels(['1','2','3','4','5','6','7','8','12','14','20','24'])
-    fig.set_size_inches(4,2)
-    fig.subplots_adjust(bottom=0.19,left=0.15,right=0.97,top=0.96,wspace=0.6,hspace=0.4)
-    fig.savefig(r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\Graphs\GumbelR2BoxPlot_'+label+'.jpg',dpi=500)
-    plt.close()
+    boxprops = dict(linewidth=1, color='black') #Adjust properties of box.
+    flierprops=dict(markersize=4,markeredgewidth=0.5) #Adjust properties of fliers.
+    medianprops=dict(linewidth=0.8, color='black') #Adjust properties of median lines.
+    plt.boxplot(boxplot,positions=range(1,13,1),flierprops=flierprops,medianprops=medianprops,boxprops=boxprops) #Plot the boxplot list (12 lists refering to 12 durations).
+    ax1.tick_params(axis='both', which='major', labelsize=8) #Adjust ticks.
+    ax1.set_xlabel("Rainfall duration (hours)",fontsize=10) #Change x labels.
+    ax1.set_ylabel("Coefficient of\ndetermination (R2)",fontsize=10) #Change y labels.
+    ax1.set_ylim(0.5,1) #Change y limits.
+    ax1.set_xticklabels(['1','2','3','4','5','6','7','8','12','14','20','24']) #Update labels of x ticks to the durations.
+    fig.set_size_inches(4,2) #Set size of the graph.
+    fig.subplots_adjust(bottom=0.19,left=0.15,right=0.97,top=0.96,wspace=0.6,hspace=0.4) #Set margins of the graph.
+    fig.savefig(r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\Graphs\GumbelR2BoxPlot.jpg',dpi=500) #Export graph.
+    plt.close() #Close plot.
 
-    #Generate the IDF dictionary, the keys will be the return periods (2,5,10 and 20 years)
-    #Plot the IDF curves, for each return period, average and standard deviation
+    #Plot the IDF curves, for each return period, with statistics of mean, standard deviation, minimum, and maximum.
     font = {'size': 10,'family':'Calibri'}
     plt.rc('font', **font)
     fig,ax1=plt.subplots(2,1)
