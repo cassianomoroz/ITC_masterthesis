@@ -20,186 +20,169 @@ import datetime
 from osgeo import osr
 import time
 
-#Inititalize the Google Earth Engine API
+#Inititalize the Google Earth Engine API.
 ee.Initialize()
 
-#Create a rectangle to clip the satellite images only to the region of the Itajai River Basin
+#Create a rectangle over the Itajai-Acu river basin.
 rec = ee.Geometry.Rectangle([-50.5, -28, -48.5, -26])
 
-#Import the correction factors.
-directory=r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\InputData"
-os.chdir(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\InputData")
-cor_factor=np.load("cor_monthly_GSMaP.npy",allow_pickle=True).tolist()
-
-#Iterate for all hours, from 1 to 24:
-for year in range(2018,2019):
-    for hour in [1]:
-        #Create an array with the same dimensions as the satellite image.
+#Iterate over the hydrological years, from July 2000 to July 2020.
+for year in range(2000,2020):
+    
+    #Iterate over the durations, from 1 to 24.
+    for hour in [1,2,3,4,5,6,7,8,12,14,20,24]:
+        
+        #Import the image collection of GSMaP, for the first period in the entire time series.
         if hour in [1,2,3,4,5,6,7,8]:
             collection=ee.ImageCollection("JAXA/GPM_L3/GSMaP/v6/operational").filterDate(str(year)+'-07-01T00:00:00',str(year)+'-07-01T0'+str(hour)+':00:00').filterBounds(rec).select('hourlyPrecipRateGC')
         elif hour==24:
             collection=ee.ImageCollection("JAXA/GPM_L3/GSMaP/v6/operational").filterDate(str(year)+'-07-01T00:00:00',str(year)+'-07-02T00:00:00').filterBounds(rec).select('hourlyPrecipRateGC')
         else:
             collection=ee.ImageCollection("JAXA/GPM_L3/GSMaP/v6/operational").filterDate(str(year)+'-07-01T00:00:00',str(year)+'-07-01T'+str(hour)+':00:00').filterBounds(rec).select('hourlyPrecipRateGC')
-        rainfall=collection.reduce(ee.Reducer.mean())
-        latlon = ee.Image.pixelLonLat().addBands(rainfall)
-        #Apply reducer to select only the pixels within the boundaries of the polygon "rec", or the Itajai River Basin region
-        latlon = latlon.reduceRegion(reducer=ee.Reducer.toList(),geometry=rec,maxPixels=1e8,scale=10609)    
-        #Get data into three different arrays: one for lat, one for lon, and one for the cumulative rainfall
-        data = np.array((ee.Array(latlon.get("hourlyPrecipRateGC_mean")).getInfo()))
-        lats = np.array((ee.Array(latlon.get("latitude")).getInfo()))
-        lons = np.array((ee.Array(latlon.get("longitude")).getInfo()))
+        rainfall=collection.reduce(ee.Reducer.mean()) #Apply reducer to calculate the mean of all hourly measurements
+        #in the period (or the rainfall in mm/h).
+        latlon = ee.Image.pixelLonLat().addBands(rainfall) #Extract latlon of the image.
+        latlon = latlon.reduceRegion(reducer=ee.Reducer.toList(),geometry=rec,maxPixels=1e8,scale=10609) #Apply reducer to clip the image
+        #to the boundaries of the rectangle (over the Itajai-Acu river basin).
+        data = np.array((ee.Array(latlon.get("hourlyPrecipRateGC_mean")).getInfo())) #Get rainfall data.
+        lats = np.array((ee.Array(latlon.get("latitude")).getInfo())) #Get latitude data.
+        lons = np.array((ee.Array(latlon.get("longitude")).getInfo())) #Get longitude data.
         #Get the unique coordinates
         uniqueLats = np.unique(lats)
         uniqueLons = np.unique(lons)
-        #Get the number of rows and columns based on the coordinates
-        ncols = len(uniqueLons)
-        nrows = len(uniqueLats)
-        #Determine pixel sizes
-        ys = uniqueLats[1] - uniqueLats[0] 
-        xs = uniqueLons[1] - uniqueLons[0]
-        #Create the numpy array with the same dimensions
-        ref_arr = np.zeros([nrows, ncols], np.float32)
-        arr = np.zeros([nrows, ncols], np.float32)
-        #Fill the array with values
+        #Get the number of rows and columns in he image.
+        ncols = len(uniqueLons) #Number of columns.
+        nrows = len(uniqueLats) #Number of rows.
+        #Determine the pixel sizes.
+        ys = uniqueLats[1] - uniqueLats[0] #In the Y axis.
+        xs = uniqueLons[1] - uniqueLons[0] #In the X axis.
+        #Create the numpy array with the same dimensions as the original satellite image.
+        ref_arr = np.zeros([nrows, ncols], np.float32) #Create a reference array.
+        arr = np.zeros([nrows, ncols], np.float32) #Create an array for analysis.
+        #Fill the array with the rainfall values.
         counter=0
-        for y in range(0,len(arr),1):
-            for x in range(0,len(arr[0]),1):
-                if lats[counter] == uniqueLats[y] and lons[counter] == uniqueLons[x] and counter < len(lats)-1:
-                    counter+=1
-                    arr[len(uniqueLats)-1-y,x] = data[counter]
-        #Apply the correction factor to the date
-        for i in range(len(cor_factor)):
-            if cor_factor[i][0].month == 7 and cor_factor[i][0].year == year:
-                corr=cor_factor[i][1]
-                break
-        arr_cor=arr*corr
-        #SetGeoTransform((originX, pixelWidth, 0, originY, 0, pixelHeight))
+        for y in range(0,len(arr),1): #Iterate over the array (y-axis).
+            for x in range(0,len(arr[0]),1): #Iterate over the array (x-axis).
+                if lats[counter] == uniqueLats[y] and lons[counter] == uniqueLons[x] and counter < len(lats)-1: #If positions match.
+                    counter+=1 #Update counter.
+                    arr[len(uniqueLats)-1-y,x] = data[counter] #Add the data values to the array (arr).
+        #Set transform.
         transform = (np.min(uniqueLons),xs,0,np.max(uniqueLats),0,-ys)
-        #Set the coordinate system
+        #Set the coordinate system.
         target = osr.SpatialReference()
-        target.ImportFromEPSG(4326)
-        #Set driver
+        target.ImportFromEPSG(4326) #The coordinate system in the region.
+        #Set driver.
         driver = gdal.GetDriverByName('GTiff')
-        #Convert the GEE collection to a nested list (check how much time it takes).
-        start_date_dt=datetime.date(year,7,1)
-        start_hour=0
-        while ((start_date_dt < datetime.date(year+1,7,1))==True):
-            end_hour=start_hour+hour
-            start_year=str(start_date_dt.year)
-            start_month=str(start_date_dt.month)
-            start_day=str(start_date_dt.day)
-            if end_hour>23:
-                end_hour=end_hour-24
-                end_date=(start_date_dt+datetime.timedelta(days=1))
-                end_year=str(end_date.year)
-                end_month=str(end_date.month)
-                end_day=str(end_date.day)
-            else:
-                end_year=str(start_date_dt.year)
-                end_month=str(start_date_dt.month)
-                end_day=str(start_date_dt.day)        
+        
+        #In the second part, iterate over the entire time series to get the series of annual maxima.
+        #The iterators over the hydrological years and duration were already presented before.
+        #Now, we will iterate over the time series in a single hydrological year.
+        start_date_dt=datetime.date(year,7,1) #Start date as the 1st July of the analyzed year.
+        start_hour=0 #Start hour as 0.
+        while ((start_date_dt < datetime.date(year+1,7,1))==True): #While start data is still part of the hydrological year.
+            end_hour=start_hour+hour #End hour equals to start date plus the analyzed duration.
+            start_year=str(start_date_dt.year) #Get year of start date.
+            start_month=str(start_date_dt.month) #Get month of start date.
+            start_day=str(start_date_dt.day) #Get day of start date.
+            if end_hour>23: #If the end hour is higher than 23, the end day will be the following day.
+                end_hour=end_hour-24 #Subtract 24 hours from the end hour (or 1 day).
+                end_date=(start_date_dt+datetime.timedelta(days=1)) #Update the end date by summing one day.
+                end_year=str(end_date.year) #Get year of end date.
+                end_month=str(end_date.month) #Get month of end date.
+                end_day=str(end_date.day) #Get day of end date.
+            else: #If the end hour is equals or lower than 23.
+                end_year=str(start_date_dt.year) #Get year of end date.
+                end_month=str(start_date_dt.month) #Get month of end date.
+                end_day=str(start_date_dt.day) #Get day of end date.
 
-            #Define the start and end dates for the collection:
-            start_date = start_year+'-'+start_month+'-'+start_day+'T'+str(start_hour)+':00:00'
-            end_date = end_year+'-'+end_month+'-'+end_day+'T'+str(end_hour)+':00:00'
+            #Define the start and end dates for the collection, following the data format of GEE.
+            start_date = start_year+'-'+start_month+'-'+start_day+'T'+str(start_hour)+':00:00' #Define start date.
+            end_date = end_year+'-'+end_month+'-'+end_day+'T'+str(end_hour)+':00:00' #Define end date.
 
-            #Import the image collection, filtering it by date and selecting only the gauge-corrected band
-            if (start_date_dt.year<2014) or (start_date_dt.year==2014 and start_date_dt.month<3):
+            #Import the image collection.
+            #Filter the collection by selecting the start and end date of the adopted duration (from 1 to 24 hours).
+            if (start_date_dt.year<2014) or (start_date_dt.year==2014 and start_date_dt.month<3): #In this case, use GSMaP reanalysis (before March 2014).
                 collection=ee.ImageCollection("JAXA/GPM_L3/GSMaP/v6/reanalysis").filterDate(start_date,end_date).filterBounds(rec).select('hourlyPrecipRateGC')
-            else:
+            else: #In this case, use GSMaP operational (after March 2014).
                 collection=ee.ImageCollection("JAXA/GPM_L3/GSMaP/v6/operational").filterDate(start_date,end_date).filterBounds(rec).select('hourlyPrecipRateGC')
-            #Apply reducer to select only the pixels within the boundaries of the polygon "rec", or the Itajai River Basin region
-            rainfall=collection.reduce(ee.Reducer.mean())
-            latlon = ee.Image.pixelLonLat().addBands(rainfall)
-            latlon = latlon.reduceRegion(reducer=ee.Reducer.toList(),geometry=rec,maxPixels=1e8,scale=10609)
+            rainfall=collection.reduce(ee.Reducer.mean()) #Apply the reducer to extract the mean value among the hours
+            #of the analyzed duration (or rainfall intensity in mm/h).
+            latlon = ee.Image.pixelLonLat().addBands(rainfall) #Get lat and lon.
+            latlon = latlon.reduceRegion(reducer=ee.Reducer.toList(),geometry=rec,maxPixels=1e8,scale=10609) #Apply the
+            #reducer to clip the image to the limits of the Itajai-Acu river basin.
         
-            #Get the data from the specific date
+            #Convert the image to a numpy array.
             data=np.array((ee.Array(latlon.get("hourlyPrecipRateGC_mean"),ee.PixelType.float()).getInfo()))
-
-            if data.size>0:
+            if data.size>0: #If array is not null.
                 data=np.array((ee.Array(latlon.get("hourlyPrecipRateGC_mean")).getInfo()))
-        
-                #Create a prov array with the same characteristics as the previous
-                prov_arr=ref_arr
-                #Fill the provisory array with the rainfall data
+                prov_arr=ref_arr #Create a prov array copying the reference array created before.
+                #Fill the provisory array with the rainfall data.
                 counter=0
-                for y in range(0,len(prov_arr),1):
-                    for x in range(0,len(prov_arr[0]),1):
-                        if lats[counter] == uniqueLats[y] and lons[counter] == uniqueLons[x] and counter < len(lats)-1:
-                            counter+=1
-                            prov_arr[len(uniqueLats)-1-y,x] = data[counter]
-                #Apply the correction factor to the date
-                for i in range(len(cor_factor)):
-                    if start_date_dt.month == cor_factor[i][0].month and start_date_dt.year == cor_factor[i][0].year:
-                        corr=cor_factor[i][1]
-                        break
-                prov_arr_cor=prov_arr*corr
-
-                #Get the maximum value
-                arr_cor=np.maximum(prov_arr_cor,arr_cor)    
-
-            #Transform the numpy array into a list
-            #arr_list=prov_arr_cor.tolist()
-
+                for y in range(0,len(prov_arr),1): #Iterate over the provisory array (y-axis).
+                    for x in range(0,len(prov_arr[0]),1): #Iterate over the provisory array (x-axis).
+                        if lats[counter] == uniqueLats[y] and lons[counter] == uniqueLons[x] and counter < len(lats)-1: #If positions match.
+                            counter+=1 #Update counter.
+                            prov_arr[len(uniqueLats)-1-y,x] = data[counter] #Fill the provisory array with the rainfall data.
+                #Update the array (arr) with the maximum value between the provisory array (prov_arr) and the array (arr).
+                #With this step, we will be always selecting the maximum throughout the entire time series.
+                arr=np.maximum(prov_arr,arr)    
             #Iterate the start hour, sum 1 hours to the next image
             start_hour=start_hour+1
             if start_hour==24:
                 start_hour=0
                 start_date_dt=(start_date_dt+datetime.timedelta(days=1))
 
-        #Save the image for the specific hour
-        outputDataset=driver.Create(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\InputData\GSMaP-gauge\DS_"+str(year)+"_"+str(hour)+"h.tif", ncols,nrows, 1,gdal.GDT_Float32)
-        #Add some information
-        outputDataset.SetGeoTransform(transform)
-        outputDataset.SetProjection(target.ExportToWkt())
-        outputDataset.GetRasterBand(1).WriteArray(arr_cor)
-        outputDataset.GetRasterBand(1).SetNoDataValue(-9999)
-        outputDataset = None
-        
-    #Append the list to the dictionary sat_merged
-    #sat_merged['2000']=arr_list   
+        #After iterating over the entire hydrological year, save the generated image as a .tif file.
+        #This file represents the extreme value for a specific year and duration, according to the step along the iteration.
+        #This images represents all pixels of the satellite product. Therefore, each pixel contains a different extreme value.
+        outputDataset=driver.Create(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\InputData\GSMaP_maps\EV_"+str(year)+"_"+str(hour)+"h.tif", ncols,nrows, 1,gdal.GDT_Float32)
+        outputDataset.SetGeoTransform(transform) #Set transform.
+        outputDataset.SetProjection(target.ExportToWkt()) #Set projection.
+        outputDataset.GetRasterBand(1).WriteArray(arr) #Write image according to array (arr).
+        outputDataset.GetRasterBand(1).SetNoDataValue(-9999) #Set no data value.
+        outputDataset = None #Reset the output dataset.
 
-#os.chdir(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\OutputData")
-#np.save('sat_GSMaP_merged.npy', sat_merged)
+#After extracting the series of extreme values, start the generation of intensity-duration-frequency (IDF) curves and design storms.
+#IMPORTANT: Before performing this step, the series of extreme values of extracted in ArcGIS through the sample tool.
+#All 20 maps refering to 20 hydrological years of the same analyzed duration were sampled to generate a series of extreme values
+#at the location of each pixel over the study area.
 
-#Import the names of the files from each duration (1 hour to 24 hours)
-input_names=[] #Create a list to store the codes of the stations and associate these codes with the dictionary
-directory=r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\InputData\GSMaP'
-for entry in os.scandir(directory):
-    input_names.append(entry.name)
+#To start the analysis, import the names of the .csv files containing the output of the Sample tool in ArcGIS.
+#The columns of the map represent the pixels, and the rows represent the series of extreme values.
+input_names=[] #Create a list to store the names of the files.
+directory=r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\InputData\GSMaP' #Set directory.
+for entry in os.scandir(directory): #Iterate over the directory.
+    input_names.append(entry.name) #Add the names do the list.
 
-def ds(input_names,samples,label): #input_names is the list with the .csv files, samples is the number of years (0,-1,-2,1,2,3), and label is the folder to save ('All','-1',etc.)
-    os.chdir(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\InputData\GSMaP")
-    #Create dictionaries
-    #EV refers to the rainfall extreme values for the 20 years
-    #LR refers to the statistial parameters of the linears regression. In this order: coefficient, intercept, R2 and RSE
-    #RP refers to the rainfall estimated for each return period. In this order: 2, 5, 10 and 20 years
-    #IDF refers to the IDF curves (rainfall intensity vs. duration), per return period of 2, 5, 10 and 20 years, per pixel
-    EV={}
-    LR={}
-    RP={}
-    IDF={}
+#Create a function ds to create design storms.
+def ds(input_names):
+    os.chdir(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\InputData\GSMaP") #Set directory.
+    #Create dictionaries to store all intermediary results throughout the analysis.
+    EV={} #Extreme values.
+    LR={} #Statistical parameters of the linea regression (coefficient, intercept, R2).
+    RP={} #Estimated rainfall per return period (2, 5, 10, and 25 years).
+    IDF={} #IDF curves (intensity vs. duration) per return period (2, 5, 10, 25 years).
+    boxplot=[] #List to store the R2 values of the Gumbel distribution to be plotted as a boxplot.
 
-    #Calculate the gumbel for 20 years duration
+    #Calculate the Gumbel reduced variate for the time series of extreme values.
     import math
-    EV_gumbel=[]
-    for i in range(1,21+samples):
-        pl=i/(21+samples)
-        gumbel=-math.log(-math.log(pl))
-        EV_gumbel.extend([gumbel])
+    EV_gumbel=[] #List to store the probabilities for extreme values.
+    for i in range(1,21): #Iterate over 20 years.
+        pl=i/(21) #Calculate probability left.
+        gumbel=-math.log(-math.log(pl)) #Calculate Gumbel reduced variate.
+        EV_gumbel.extend([gumbel]) #Add the reduced variate to the list EV_gumbel.
     
-    #Calculte the gumbel for the return periods of 2, 5, 10 and 20 years.
+    #Calculte the Gumbel reduced variate for the return periods of 2, 5, 10 and 25 years.
     import math
-    RP_=[2,5,10,25]
-    RP_gumbel=[]
-    for i in RP_:
-        pr=1/i
-        pl=1-pr
-        gumbel=-math.log(-math.log(pl))
-        RP_gumbel.extend([gumbel])
+    RP_=[2,5,10,25] #List of return periods.
+    RP_gumbel=[] #List to store the probabilities for each return period.
+    for i in RP_: #Iterate over return periods.
+        pr=1/i #Calculate probability right.
+        pl=1-pr #Calculate probabilty left.
+        gumbel=-math.log(-math.log(pl)) #Calculate Gumbel reduced variate.
+        RP_gumbel.extend([gumbel]) #Add the reduced variate to the list RP_gumbel.
 
-    #Define parameters for the graph
+    #Set the parameters for the graph of IDF curves.
     row=0
     column=0
     font = {'size': 10,'family':'Calibri'}
@@ -207,83 +190,59 @@ def ds(input_names,samples,label): #input_names is the list with the .csv files,
     fig,axs=plt.subplots(3,4)
     count1=0
     count2=0
-    boxplot=[]
 
-    #Iterate each duration, from 1 to 24 hours
-    for name in input_names:
+    for name in input_names: #Iterate over series of extreme values, per duration. Each "name" variable refers
+        #to a .cvs file for a different rainfall duration.
         count=0
-        EV_hour={}
-        LR_hour={}
-        RP_hour={}
-        EV_all=[]
+        EV_hour={} #Extreme values for a specific duration.
+        LR_hour={} #Statistical parameters for a specific duration.
+        RP_hour={} #Rainfall intensities per return period for a specific duration.
+        EV_all=[] #Create a list to store the data of the extreme value .csv file.
         boxplot_px=[]
-        #Open the dataset
+        
+        #Open the extreme value .csv file.
         with open(name, newline='') as f:
             reader = csv.reader(f)
             EV_extend = list(reader)     
-            EV_all.extend(EV_extend)
+            EV_all.extend(EV_extend) #Fill the list EV_all.
             r2max=0
             r2min=1
-            #Iterate over each pixel of the map to create an extreme value statistics for each pixel
-            for i in range(len(EV_all[0])):
-                EV_px_0=[row[i] for row in EV_all]
-                EV_px_1=[]
-                EV_px=[]
-                rainfall_RP=[]
-                #Extreme rainfall values for the years per pixel
-                for j in range(len(EV_px_0)):
-                    if j!=0:
-                        EV_px_1.extend([float(EV_px_0[j])])
-                    else:
-                        if EV_px_0[j]=='ï»¿0':
-                            EV_code=int(0)
-                        else:
-                            EV_code=int(EV_px_0[j])
-                #Sort the maximum annual rainfall in ascending order
+            
+            #Iterate over each pixel of the map. Perform the extreme value statistics for each pixel.
+            for i in range(len(EV_all[0])): #Iterate over each column (pixel) of the extreme value file.
+                EV_px_0=[row[i] for row in EV_all] #Get the row correponding to each column. This refers to the series of annual maxima.
+                EV_px_1=[] #Create a list to store the series of annual maxima for a specific pixel.
+                EV_px=[] #Create a list to store the series of annual maxima for all pixels.
+                rainfall_RP=[] #Create a list to store results of estimated rainfall per return period.
+                
+                for j in range(len(EV_px_0)): #Iterate over each value of the series of annual maxima.
+                    if j!=0: #For all values higher than the position 0.
+                        EV_px_1.extend([float(EV_px_0[j])]) #Add the corresponding rainfall intensity to the list EV_px_1, converted to float.
+                    else: #For the first value in the position 0, which refers to the pixel ID.
+                        if EV_px_0[j]=='ï»¿0': #Pixel 0.
+                            EV_code=int(0) #Adopt 0.
+                        else: #Other pixels.
+                            EV_code=int(EV_px_0[j]) #Adopt int of the pixel ID (from 0 to 194, total of 195 pixels).
+                
+                #Sort the series of annual maxima in ascending order.
                 EV_px_1.sort()
-                #Eliminate the outliers according to the input samples:
-                if samples!=0:
-                    EV_px_1=EV_px_1[0:samples]
-                #Append EV_px_1 
+                #Append EV_px_1 to EV_px to generate a graph with all Gumbel curves.
                 EV_px.append(EV_px_1)                    
-                #Add the values (rainfall and gumbel) to the dictionary EV_hour for the duration X
+                #Add the values (rainfall and Gumbel) to the dictionary EV_hour for the duration i.
                 EV_hour[i]=EV_px
-                #Fit a linear regression to the datasets EV_px_1 as x and EV_gumbel as y
-                #Create a linear regression object
+                
+                #Fit a linear regression. EV_px_1 is rainfall intensity (x) and EV_gumbel is Gumbel reduced variate (y).
+                #Create a linear regression object.
                 regr = linear_model.LinearRegression()
-                #Convert the lists to arrays
-                x=np.array(EV_gumbel).reshape((-1,1))
-                y=np.array(EV_px_1)
-                #Train the model using the sets
+                #Convert the lists to arrays.
+                x=np.array(EV_gumbel).reshape((-1,1)) #Gumbel reduced variate as y.
+                y=np.array(EV_px_1) #Rainfall intensity as x.
+                #Train the model using the sets.
                 regr.fit(x,y)
-                #Predict the gumbel values from the rainfall
-                y_pred=regr.predict(x)
-                #Plot the Gumbel distribution
-                #Define parameters for the other graph
-                font = {'size': 10,'family':'Calibri'}
-                plt.rc('font', **font)
-                fig1,ax1=plt.subplots(1,1)
-                #Plot the points (observed)
-                ax1.scatter(x,y,color=(0.41708573625528644, 0.6806305267204922, 0.8382314494425221),s=8,zorder=1,label='Annual maximum rainfall')
-                #Plot the linear distribution (fitted)
-                ax1.plot(x,y_pred,'k--',lw=1.2,zorder=2,label='Linear function')
-                #Export the graph
-                ax1.tick_params(axis='both', which='major', labelsize=8)
-                ax1.set_xlabel("Gumbel reduced variate",fontsize=10)
-                ax1.set_ylabel("Rainfall intensity (mm/h)",fontsize=10)
-                ax1.set_xticks(np.arange(-1, 4, 0.5))
-                ax1.set_xlim(-1.30,3.19)
-                #ax1.set_title('Pixel '+str(i)+' - Duration '+name[5:-4],fontsize=10)
+                #Predict the gumbel values from the rainfall.
+                y_pred=regr.predict(x) #y_pred refers to the predicted annual maxima, in contradiction with the observed (EV_px_1).
+                #Calculate the R2 by comparing the predicted and observed rainfall intensity.
                 r2=round(r2_score(y,y_pred),2)
-                #coef=round(regr.coef_[0],2)
-                #itcp=round(regr.intercept_,2)
-                fig1.text(0.14,0.8,'R2='+str(r2),fontsize=8)
-                fig1.set_size_inches(6,3)
-                fig1.legend(loc="lower center", fontsize=10,ncol=4,frameon=False)
-                fig1.subplots_adjust(bottom=0.24,left=0.09,right=0.97,top=0.90,wspace=0.4,hspace=0.4)
-                #Activate the savefig function 
-                #fig1.savefig(r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\Graphs\Gumbel\Pixel'+str(i)+'_'+name[5:-4]+'_'+label+'.jpg')
-                plt.close()
                 #Add y_pred to the dictionary
                 if count==0:
                     EV_pred=np.array([y_pred])
@@ -322,7 +281,8 @@ def ds(input_names,samples,label): #input_names is the list with the .csv files,
                     rainfall_RP.extend(rainfall)
                 #Add the rainfall, for each return period, for the related pixel, to the dictionary
                 RP_hour[i]=rainfall_RP
-            #Plot the distributions with max and min R2, for this duration
+                
+            #Set the parameters for the graph of minimum and maximum R2, per duration.
             font = {'size': 10,'family':'Calibri'}
             plt.rc('font', **font)
             fig2,ax2=plt.subplots(1,2)
@@ -351,11 +311,13 @@ def ds(input_names,samples,label): #input_names is the list with the .csv files,
             #Activate the savefig function 
             fig2.savefig(r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\Graphs\GumbelReport\Pixel'+str(i)+'_'+name[5:-4]+'_'+label+'.jpg',dpi=500)
             plt.close()
+            
             #Add the dictionaries from each duration to the main dictionary with all durations, from 1 to 24 hours
             boxplot.append(boxplot_px)
             EV[name[2:]]=EV_hour
             LR[name[2:]]=LR_hour
             RP[name[2:]]=RP_hour
+            
             #Calculate and plot the average and standard deviation of Gumbel distrituions for each duration
             avg=np.mean(EV_pred,axis=0)
             std=np.std(EV_pred,axis=0)
@@ -378,29 +340,6 @@ def ds(input_names,samples,label): #input_names is the list with the .csv files,
             if column>3:
                 column=0
                 row=row+1
-
-    #Save the gumbel plot with the tendency lines from all 400 pixels
-    duration1=[1,2,3,4,5,6,7,8,12,14,20,24]
-    duration=[[1],[2],[3],[4],[5],[6],[7],[8],[12],[14],[20],[24]]
-    count=0
-    for i in range(len(axs)):
-        for j in range(len(axs[0])):
-            ax=axs[i,j]
-            ax.tick_params(axis='both', which='major', labelsize=8)
-            ax.set_xticks(np.arange(-1, 4, 1))
-            ax.set_xlim(-1.30,3.19)
-            ax.set_ylim(0,20)
-            if count==0:
-                ax.set_title(str(duration[count][0])+" hour",size=10)
-            else:
-                ax.set_title(str(duration[count][0])+" hours",size=10)
-            count=count+1
-    fig.text(0.5,0.05,'Gumbel reduced variate',fontsize=10)
-    fig.legend(loc="lower center", fontsize=8,ncol=4,frameon=False)
-    fig.set_size_inches(6, 6)
-    fig.subplots_adjust(bottom=0.1,left=0.08,right=0.97,top=0.95,wspace=0.06,hspace=0.25)
-    fig.savefig(r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\Graphs\GumbelSpatialVariation_'+label+'.jpg',dpi=500)
-    plt.close()
 
     #Plot the boxplot for gumbel
     font = {'size': 10,'family':'Calibri'}
@@ -476,22 +415,14 @@ def ds(input_names,samples,label): #input_names is the list with the .csv files,
     fig.legend(loc="lower center", fontsize=8,ncol=4,frameon=False,handletextpad=0.3)
     fig.set_size_inches(4.5,4)
     fig.subplots_adjust(bottom=0.17,left=0.1,right=0.97,top=0.94,wspace=0.06,hspace=0.22)
-    fig.savefig(r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\Graphs\IDFCurves_'+label+'.jpg',dpi=500)
+    fig.savefig(r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\Graphs\IDFCurves.jpg',dpi=500)
     plt.close()
 
     return IDF
 
 #It was observed that, in many cases, the low R2 of the linear fit was caused by a single outlier, which refers to he maximum precipitation. Therefore,
 #we decided to rerun the code excluding the highest value from the analysis. A function was created
-IDF=ds(input_names,0,'')#0 refers to not exclude any point
-
-#Save the IDF data
-os.chdir(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\OutputData")
-np.save("IDF.npy", IDF)
-
-#Open the IDF data
-#os.chdir(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\OutputData")
-#IDF=np.load("IDF.npy",allow_pickle=True).item()
+IDF=ds(input_names)
 
 #Now that the IDF curves were created, generate the hyetograph based on the alternating block method, per return period
 #Import the mask .tif file
