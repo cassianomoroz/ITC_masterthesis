@@ -306,171 +306,173 @@ def ds(input_names):
     plt.close() #Close plot.
 
     #Plot the IDF curves, for each return period, with statistics of mean, standard deviation, minimum, and maximum.
+    duration=[[1],[2],[3],[4],[5],[6],[7],[8],[12],[14],[20],[24]] #Define the series of durations.
+    #Settle the graph.
     font = {'size': 10,'family':'Calibri'}
     plt.rc('font', **font)
     fig,ax1=plt.subplots(2,1)
-    colors=sns.color_palette('Blues',5)
-    color_code=1
-    for i in range(len(RP_)):
+    colors=sns.color_palette('Blues',5) #Define color palette with blue tones.
+    color_code=1 #Create count for the colors.
+    
+    for i in range(len(RP_)): #Iterate over return periods of 2, 5, 10, and 25 years.
         count=0
-        IDF_px={}
-        RP_dic=RP['DS_1h.csv']
-        for k in RP_dic.keys():
-            RP_list=RP_dic[k]
-            IDF_list=copy.deepcopy(duration)
-            IDF_int_list=[]
-            for j in range(len(duration)):
-                RP_dic=RP['DS_'+str(duration[j][0])+'h.csv']
-                RP_list=RP_dic[k]
-                IDF_list[j].extend([RP_list[i]])
-                IDF_int_list.append(RP_list[i])
-            IDF_px[k]=IDF_list
-            if count==0:
-                IDF_intensity=np.array([IDF_int_list])
-            else:
+        IDF_px={} #Create a dictionary to store the rainfall intensity vs. duration relationships for each return period.
+        RP_dic=RP['DS_1h.csv']  #Select the first duration of 1 hour from the dictionary RP. This is  to be able to extract the keys of the dictionary.
+        
+        for k in RP_dic.keys(): #Iterate over pixel IDs.
+            RP_list=RP_dic[k] #Select the list of rainfall intensities for the 4 reurn periods.
+            IDF_list=copy.deepcopy(duration) #Create a copy of the series of durations.
+            IDF_int_list=[] #Create a list to sotre the rainfall intensity vs. duration relationships for each return period, per pixel.
+            
+            for j in range(len(duration)): #Iterate over durations.
+                RP_dic=RP['DS_'+str(duration[j][0])+'h.csv'] #Select the dictionary of rainfall intensities of all pixel IDs, for the duration j.
+                RP_list=RP_dic[k] #Select the dictionary of rainfall intensities of all return periods, for the pixel ID k.
+                IDF_list[j].extend([RP_list[i]]) #Add the rainfall intensity of the return period i to the IDF_list at the position of the duration j.
+                IDF_int_list.append(RP_list[i]) #Add the rainfall intensity of the return period i to the IDF_int_list.
+                
+            IDF_px[k]=IDF_list #Add IDF_list to IDF_px at the location of pixel ID k. Basically, we are reorganizing the arrays of each pixel ID,
+            #moving from rainfall intensities per return period to rainfall intensities per duration.
+            if count==0: #For the first return period, 2 years.
+                IDF_intensity=np.array([IDF_int_list]) #Start a new IDF_intensity array with IDF_int_list.
+            else: #For all other return periods.
                 IDF_int_add=np.array([IDF_int_list])
-                IDF_intensity=np.concatenate((IDF_intensity,IDF_int_add),axis=0)
-            count=count+1
-        IDF[RP_[i]]=IDF_px
-        #Calculate the average and standard deviation of the IDF curves for the return period i
-        avg=np.mean(IDF_intensity,axis=0)
-        max_=np.amax(IDF_intensity,axis=0)
-        min_=np.amin(IDF_intensity,axis=0)
-        std = np.std(IDF_intensity,axis=0)
-        #Plot the average and standard deviation
-        ax1[0].fill_between(duration1,avg-std,avg+std,alpha=.4,color=colors[color_code],lw=0,zorder=1)
-        ax1[0].plot(duration1,avg,lw=1.5,color=colors[color_code],zorder=2,label=str(RP_[i])+'-yr RP')
-        ax1[1].plot(duration1,max_,lw=1.5,color=colors[color_code],linestyle="dashed",zorder=2)
-        ax1[1].plot(duration1,min_,lw=1.5,color=colors[color_code],linestyle="dashdot",zorder=2)
-        #ax1.scatter(duration1,avg,lw=1,color=colors[color_code],zorder=3,s=8)
-        color_code=color_code+1
+                IDF_intensity=np.concatenate((IDF_intensity,IDF_int_add),axis=0) #Concatenate the IDF_int_list to the existing IDF_intensity.
+            count=count+1 #Update count.
+            
+        IDF[RP_[i]]=IDF_px #After iterating over durations and pixel IDs, add the list IDF_px to the dictionary IDF. RP_[i] refers to the code for the return period.
+        #Calculate the statistical parameters of the IDF curves, among all pixels, for the return period i
+        avg=np.mean(IDF_intensity,axis=0) #Average among all IDF curves.
+        max_=np.amax(IDF_intensity,axis=0) #Maximum among all IDF curves.
+        min_=np.amin(IDF_intensity,axis=0) #Minumum among all IDF curves.
+        std = np.std(IDF_intensity,axis=0) #Standard deviation among all IDF curves.
+        #Plot the statistical parameters.
+        ax1[0].fill_between(duration1,avg-std,avg+std,alpha=.4,color=colors[color_code],lw=0,zorder=1) #Standard deviation.
+        ax1[0].plot(duration1,avg,lw=1.5,color=colors[color_code],zorder=2,label=str(RP_[i])+'-yr RP') #Average.
+        ax1[1].plot(duration1,max_,lw=1.5,color=colors[color_code],linestyle="dashed",zorder=2) #Maximum.
+        ax1[1].plot(duration1,min_,lw=1.5,color=colors[color_code],linestyle="dashdot",zorder=2) #Minimum.
+        color_code=color_code+1 #Update count for color (each color refers to a different return period).
+        
     for i in [0,1]:
-        if i==0:
-            ax1[i].set_title('(a) Mean and standard deviation',fontsize=10)
-        else:
-            ax1[i].set_title('(b) Maximum and minimum',fontsize=10)
-        ax1[i].tick_params(axis='both', which='major', labelsize=8)
-        ax1[i].set_xlim(0,25)
-        ax1[i].set_ylim(0,19)
-        ax1[i].set_xticks(np.arange(1, 25, 1.0))
-        ax1[i].set_yticks(np.arange(0, 20, 2.0))
-    ax1[1].set_xlabel("Rainfall duration (hours)",fontsize=10)
-    fig.text(0.02,0.55,'Rainfall intensity (mm/h)',fontsize=10,va='center',rotation=90)
-    ax1[0].tick_params(axis='both',which='major',labelbottom=False)
-    fig.legend(loc="lower center", fontsize=8,ncol=4,frameon=False,handletextpad=0.3)
-    fig.set_size_inches(4.5,4)
-    fig.subplots_adjust(bottom=0.17,left=0.1,right=0.97,top=0.94,wspace=0.06,hspace=0.22)
-    fig.savefig(r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\Graphs\IDFCurves.jpg',dpi=500)
-    plt.close()
+        if i==0: #Graph 1 (average and standard deviation).
+            ax1[i].set_title('(a) Mean and standard deviation',fontsize=10) #Set title.
+        else: #Graph 2 (minimum and maximum).
+            ax1[i].set_title('(b) Maximum and minimum',fontsize=10) #Set title.
+        ax1[i].tick_params(axis='both', which='major', labelsize=8) #Change ticks.
+        ax1[i].set_xlim(0,25) #Set x limits.
+        ax1[i].set_ylim(0,19) #Set y limits.
+        ax1[i].set_xticks(np.arange(1, 25, 1.0)) #Set x limits.
+        ax1[i].set_yticks(np.arange(0, 20, 2.0)) #Set y limits.
+    ax1[1].set_xlabel("Rainfall duration (hours)",fontsize=10) #Set labels.
+    fig.text(0.02,0.55,'Rainfall intensity (mm/h)',fontsize=10,va='center',rotation=90) #Add text.
+    ax1[0].tick_params(axis='both',which='major',labelbottom=False) #Set graph properties.
+    fig.legend(loc="lower center", fontsize=8,ncol=4,frameon=False,handletextpad=0.3) #Add legend.
+    fig.set_size_inches(4.5,4) #Change size of the graph.
+    fig.subplots_adjust(bottom=0.17,left=0.1,right=0.97,top=0.94,wspace=0.06,hspace=0.22) #Change margins of the graph.
+    fig.savefig(r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\Graphs\IDFCurves.jpg',dpi=500) #Export graph.
+    plt.close() #Close plot.
 
-    return IDF
+    return IDF #Return the IDF diciotionary with all rainfall intensities per duration and return period, for each analyzed pixel ID.
 
-#It was observed that, in many cases, the low R2 of the linear fit was caused by a single outlier, which refers to he maximum precipitation. Therefore,
-#we decided to rerun the code excluding the highest value from the analysis. A function was created
+#Call the function ds and return the dictionary IDF. The function will also plot the desired graphs of R2 score of Gumbel distribution, examples of minimum
+#and maximum R2 scores of the distribution, and IDF curves (with statistical parameters).
 IDF=ds(input_names)
 
-#Now that the IDF curves were created, generate the hyetograph based on the alternating block method, per return period
-#Import the mask .tif file
-mask=gdal.Open(r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\InputData\Sample_vf_vf.tif')
+#Now that the IDF curves were created, generate the rainfall maps of the spatially distributed hyetographs based on the alternating block method, for each return period.
+#Import the mask .tif file, which contains the locations of the pixel IDs.
+mask=gdal.Open(r'C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\InputData\Sample.tif')
 #Extract parameters from image
-cols = mask.RasterXSize
-rows = mask.RasterYSize
-geotrans=mask.GetGeoTransform()
-proj=mask.GetProjection()
-driver = gdal.GetDriverByName('GTiff')
-#Convert the mask into a numpy array
-mask_np=np.array(mask.GetRasterBand(1).ReadAsArray()) #This will be the basis for the rainfall
-#Iterate over return periods
-#Create a list for time (y-axis)
-time=[]
-for j in range(0,25):
-    if j==0 or j==24:
-        time.extend([j])
-    else:
-        time.extend([j,j])
+cols = mask.RasterXSize #Number of columns.
+rows = mask.RasterYSize #Number of rows.
+geotrans=mask.GetGeoTransform() #Get geo transform.
+proj=mask.GetProjection() #Get projection.
+driver = gdal.GetDriverByName('GTiff') #Get driver.
+#Convert the mask into a numpy array. This will be the reference for the rainfall maps.
+mask_np=np.array(mask.GetRasterBand(1).ReadAsArray())
+
+#Iterate over return periods       
 for i in IDF.keys():
-    count=0
-    IDF_RP=IDF[i] #Defined the dictionaty for the return period i
-    #Generate lists to store the DS for the return period
-    ds=[['Pixel ID']]
-    for j in range(1,25):
-        ds.append([str(j-1)+'-hr'])
-    for j in IDF_RP.keys():
-        ds_px=[]
-        ds_px_sort=[]
-        ds_px_np=[]
-        IDF_px=IDF_RP[j] #Defined the nested list with IDF curve for RP i and pixel j
-        #Calculate the rainfall intensity (mm/h) for each duration, based on the IDF curve
-        for duration in range(1,25): #Defines the duration of the design storm. 1 to 24 hours.
-            for k in range(len(IDF_px)):
-                if duration==IDF_px[k][0]:
-                    ds_px.append([duration,IDF_px[k][1]])
-                elif duration>IDF_px[k][0] and duration<IDF_px[k+1][0]:
-                    a=(IDF_px[k][1]-IDF_px[k+1][1])/(IDF_px[k][0]-IDF_px[k+1][0])
-                    b=(IDF_px[k][1])-(a*IDF_px[k][0])
-                    ds_px.append([duration,(a*duration)+b])
-        #Calculate the cumulative depth, in mm, by multiplying duration and intensity
-        for k in range(len(ds_px)):
-            cum_dep=ds_px[k][0]*ds_px[k][1]#duration/1h * intensity
-            ds_px[k].extend([cum_dep])
-        #Calculate the incremental depth in mm
-        for k in range(len(ds_px)):
-            if k==0:
-                inc_dep=ds_px[k][2]
-            else:
-                inc_dep=ds_px[k][2]-ds_px[k-1][2]
-            ds_px[k].extend([inc_dep])
-        #Sort the incremental depth according to the alternating block method
-        #Start sorting the entire nested list by the incremental depth, ascending order
+    IDF_RP=IDF[i] #Extract the dictionary of rainfall intensities per pixel ID for the return period i
+    ds=[['Pixel ID']] #Create a list to store the DS for the return period i. #The first row refers to the titles.
+    
+    for j in range(1,25): #Iterate over hours, from 1 to 24 hours (duration of the design storm).
+        ds.append([str(j-1)+'-hr']) #Add the corresponding hour as a title in the list ds.
+        
+    for j in IDF_RP.keys(): #Iterate over pixel IDs.
+        ds_px=[] #Create a list to store the rainfall intensities per pixel ID.
+        ds_px_sort=[] #Create a list to store the sorted rainfall intensities per pixel ID.
+        IDF_px=IDF_RP[j] #Extract the list with rainfall intensities, per duration, for the return period i and the pixel ID j.
+        
+        #Calculate the rainfall intensity (mm/h) for each duration, based on the IDF curve.    
+        for duration in range(1,25): #Iterate over the hours, from 1 to 24 hours (duration of the design storm).
+            
+            for k in range(len(IDF_px)): #Iterate over the rainfall intensities.
+                if duration==IDF_px[k][0]: #If the analyzed duration refers to one of the 12 adopted durations (1, 2, 3, 4, 5, 6, 7, 8, 12, 14, 20, 24).
+                    ds_px.append([duration,IDF_px[k][1]]) #Adopt the corresponding rainfall intensity.
+                elif duration>IDF_px[k][0] and duration<IDF_px[k+1][0]: #If the analyzed duration refers to a value inbetween the 12 adopted durations.
+                    #In this case, fit a linear function between the previous and following points.
+                    a=(IDF_px[k][1]-IDF_px[k+1][1])/(IDF_px[k][0]-IDF_px[k+1][0]) #Define coefficient a of the linear equation.
+                    b=(IDF_px[k][1])-(a*IDF_px[k][0]) #Define coefficient b of the linear function.
+                    ds_px.append([duration,(a*duration)+b]) #Calculate the rainfall intensity for the desired duration (9, 10, 11, 13, 15, 16, 17, 18, 19, 21, 22, 23).
+                    
+        #Calculate the cumulative depth, in mm, by multiplying duration and intensity.
+        for k in range(len(ds_px)): #Iterate over the list of rainfall intensities per pixel ID.
+            cum_dep=ds_px[k][0]*ds_px[k][1] #Calculated as duration/1hour * rainfall intensity
+            ds_px[k].extend([cum_dep]) #Add the cumulative rainfall as a second column in the ds_px list.
+            
+        #Calculate the incremental depth in mm.
+        for k in range(len(ds_px)):#Iterate over the list of rainfall intensities per pixel ID.
+            if k==0: #If the value is the first in the list.
+                inc_dep=ds_px[k][2] #Incremental is the cumulative depth.
+            else: #If the value is any other.
+                inc_dep=ds_px[k][2]-ds_px[k-1][2] #Incremental is the difference between this and the previous cumulative depth.
+            ds_px[k].extend([inc_dep]) #Add incremental depth as a third column in the ds_px list.
+            
+        #Sort the incremental depth according to the alternating block method.
+        #Start sorting the entire nested list by the incremental depth in ascending order.
         ds_px.sort(key=lambda x:x[3],reverse=True)
-        #Add a count columns
-        for k in range(len(ds_px)):
-            ds_px[k].extend([k+1])
-        #First, start with uneven number and sort in descending order
-        for k in range(len(ds_px)):
-            if ds_px[k][-1]%2!=0:
-                ds_px_sort.extend([ds_px[k][3]])
-                ds_px_np.extend([ds_px[k][3],ds_px[k][3]])
-        #Sort this list in descending order
+        #Add a count column.     
+        for k in range(len(ds_px)): #Iterate over the list.
+            ds_px[k].extend([k+1]) #Add the count as a forth column in the ds_px list.
+        #First, start with uneven numbers and sort in descending order.
+        for k in range(len(ds_px)): #Iterate over the list.
+            if ds_px[k][-1]%2!=0: #If number if uneven.
+                ds_px_sort.extend([ds_px[k][3]]) #Add the rainfall intensities to ds_px_sort.
+        #Sort this list in descending order.
         ds_px_sort.sort()
-        ds_px_np.sort()
-        #Now, add the even number in ascending order
-        for k in range(len(ds_px)):
-            if ds_px[k][-1]%2==0:
-                ds_px_sort.extend([ds_px[k][3]])
-                ds_px_np.extend([ds_px[k][3],ds_px[k][3]])
-        #Transform the ds into a numpy array. Add to existing
-        if count==0:
-            ds_np=np.array([ds_px_np])
-        else:
-            ds_np_add=np.array([ds_px_np])
-            ds_np=np.concatenate((ds_np,ds_np_add),axis=0)
-        count=count+1
-        #Finally, add the design storm to the nested list countaining all pixels
-        #Add the pixel code
-        ds[0].extend(['Pixel '+str(j)])
-        for k in range(len(ds_px_sort)):
-            ds[k+1].extend([ds_px_sort[k]])
-    #Export the nested list for RP i
-    os.chdir(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\OutputDS")
-    np.save("DS_RP_"+str(i)+"yr.npy", ds)
-    #Set directory to save .tif files
+        #Now, add the even number, which were already previously sorted in ascending order. 
+        for k in range(len(ds_px)): #Iterate over the list.
+            if ds_px[k][-1]%2==0: #If number is even.
+                ds_px_sort.extend([ds_px[k][3]]) #Extend to the existing ds_px_sort list (previously 
+        #The generated files represent the design storms for the return period i and the pixel ID j.     
+                 
+        #Finally, add the design storm to the  list countaining all pixels, for the return period i.
+        ds[0].extend(['Pixel '+str(j)]) #Add the pixel code to the first row of the ds list, extended to the existing title.
+        for k in range(len(ds_px_sort)): #Iterate over the rainfall intensities of the design storm, for return period i and pixel j.
+            ds[k+1].extend([ds_px_sort[k]]) #Add the rainfall intensities in the following rows of the ds list.
+        #The generated ds list will be a nested list where each row represents a different pixel ID, and the columns represent the rainfall intensities of the design storms.
+            
+    #Save the design storms as 24 rainfall maps representing the 24 hourly rainfall intensities for the return period i.
+    #Set directory to save .tif files.
     os.chdir(r"C:\Users\cassi\Desktop\Academia\ITC\Thesis\Edit_data\Rainfall\DesignStorms\OutputDSMaps")
-    #Also save the design storm
-    #for t in range(1,25):
-    #    ds_np=np.copy(mask_np.astype('float64'))
-    #    ds_np[ds_np<0]=np.nan
-    #    for j in range(len(ds[0])-1):
-    #        ds_px=[]
-    #        ds_px=[row[j+1] for row in ds]
-    #        for row in range(len(mask_np)):
-    #            for column in range(len(mask_np[0])):
-    #                if mask_np[row,column]==j:
-    #                    ds_np[row,column]=ds_px[t]
-        #Export the ds_np as a .tif
-    #    dataset = driver.Create('DS_'+str(i)+'yr_'+str(t)+'hr.tif',cols,rows,1,gdal.GDT_Float32)
-    #    dataset.GetRasterBand(1).WriteArray(ds_np)
-    #    dataset.SetGeoTransform(geotrans)
-    #    dataset.SetProjection(proj)
-    #    dataset.FlushCache()
-    #    dataset=None    
+
+    for t in range(1,25): #Iterate over the duration of the design storms.
+        ds_np=np.copy(mask_np.astype('float64')) #Create a copy of the reference .tif file mask_np.
+        ds_np[ds_np<0]=np.nan #Replace negative values by nan.
+    
+        for j in range(len(ds[0])-1): #Iterate over the pixel IDs.
+            ds_px=[] #Create a list to store the rainfall intensity values for pixel ID j.
+            ds_px=[row[j+1] for row in ds] #Replace this list by the rainfall intensity values, extracted from list ds.
+   
+            #Now, fill the reference array with the values.
+            for row in range(len(mask_np)): #Iterate over the rows of the reference array.
+                for column in range(len(mask_np[0])): #Iterate over the columns of the reference array.
+                    if mask_np[row,column]==j: #If the value in the mask_np is equal to the pixel ID.
+                        ds_np[row,column]=ds_px[t] #Add the rainfall intensity value to this pixel.
+    
+        #After finishing the iteration over all pixels of the image, for the duration t, export the rainfall map as a .tif file.
+        dataset = driver.Create('DS_'+str(i)+'yr_'+str(t)+'hr.tif',cols,rows,1,gdal.GDT_Float32) #Export map with return period i, and duration t.
+        dataset.GetRasterBand(1).WriteArray(ds_np) #Write array to .tif file.
+        dataset.SetGeoTransform(geotrans) #Set geo transform.
+        dataset.SetProjection(proj) #Set projection.
+        dataset.FlushCache()
+        dataset=None    
